@@ -31,7 +31,8 @@ def post(app, url, **form):
 
 def test_unknown_token_and_paths_are_404(site):
     app, *_ = site
-    assert app.handle("GET", "/").status == 404
+    assert app.handle("GET", "/").status == 200 and "по личной ссылке" in app.handle("GET", "/").body
+    assert app.handle("GET", "/k").status == 404
     assert app.handle("GET", "/k/" + "x" * 32).status == 404
     assert app.handle("GET", "/healthz").body == "ok"
 

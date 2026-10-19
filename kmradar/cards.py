@@ -102,6 +102,8 @@ def describe(event: Event) -> str:
         if f.get("receivables"):
             line += f"; дебиторка {money(f['receivables_prev'])} → {money(f['receivables'])}"
         return line + "."
+    if t == "news_mention":
+        return f"Новость ({f.get('source', 'СМИ')}, {when}): «{f.get('title', '')}»."
     if t == "stop":
         line = f"{f.get('reason', 'стоп-сигнал').capitalize()} ({when})"
         if f.get("amount"):

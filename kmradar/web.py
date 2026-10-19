@@ -128,6 +128,11 @@ class App:
         url = urlsplit(raw_path)
         if url.path == "/healthz":
             return Response(200, "ok", {"Content-Type": "text/plain; charset=utf-8"})
+        if url.path == "/":
+            return Response(200, page("Радар поводов", "<h1>Радар поводов работает</h1>"
+                                      "<p class='muted'>Дайджест открывается по личной ссылке вида "
+                                      "/k/…, её выдаёт администратор радара.</p>"),
+                            {"Content-Type": "text/html; charset=utf-8"})
         m = TOKEN_RE.match(url.path)
         if not m:
             return self.not_found()

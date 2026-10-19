@@ -37,6 +37,8 @@ SIGNALS: dict[str, Signal] = {s.code: s for s in [
            ("credit_line", "salary")),
     Signal("revenue_growth", "Рост выручки > 30%", "ГИР БО", 0.4, 90,
            ("credit_line", "factoring")),
+    Signal("news_mention", "Компания в новостях", "Новости", 0.5, 14,
+           ("loan", "credit_line", "rko")),
     Signal("stop", "Стоп-сигнал: ликвидация, банкротство, долги", "Федресурс, ФССП",
            0.0, 90, (), stop=True),
 ]}

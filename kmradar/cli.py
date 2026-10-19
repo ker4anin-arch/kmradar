@@ -95,6 +95,10 @@ def cmd_run(args: argparse.Namespace) -> None:
         print(f"Файла территории {args.territory} нет — Checko пропускаю.")
     if args.source:
         sources.append(FixtureSource(args.source))
+    if getattr(args, "feeds", None) and Path(args.feeds).is_file():
+        from .news import NewsSource, read_feeds
+        sources.append(NewsSource(read_feeds(args.feeds), db.companies,
+                                  Path(args.db).resolve().parent / "news-cache.json"))
     if not sources:
         print("Укажите --territory (Checko) и/или --source (файлы аналитика)."); sys.exit(1)
     res = run_day(db, CompositeSource(*sources), day, _delivery(args))
@@ -140,6 +144,23 @@ def cmd_checko_plan(args: argparse.Namespace) -> None:
           f"первый день — около {n * 8}, пока заполняется кеш.")
 
 
+def cmd_news_test(args: argparse.Namespace) -> None:
+    """Проверить источники новостей и показать найденные упоминания компаний из базы."""
+    from .news import NewsSource, read_feeds
+    if not Path(args.feeds).is_file():
+        print(f"Файла {args.feeds} нет. Впишите в него RSS-фиды и Telegram-каналы, по одному в строке.")
+        sys.exit(1)
+    db = Storage(args.db)
+    src = NewsSource(read_feeds(args.feeds), db.companies, Path(args.db).resolve().parent / "news-cache.json")
+    events = src.manual_events(date.today())
+    for r in src.results:
+        print(f"{r.status:12} {len(r.entries):4} записей  {r.url}")
+    names = db.companies()
+    for e in events:
+        print(f"* {names[e.inn].name}: {e.facts['title']} — {e.url}")
+    print(f"Компаний в базе: {len(names)}, упоминаний за {14} дней: {len(events)}")
+
+
 def cmd_metrics(args: argparse.Namespace) -> None:
     print(report(Storage(args.db), args.km))
 
@@ -182,6 +203,7 @@ def main(argv: list[str] | None = None) -> None:
     s.add_argument("--source", help="каталог с файлами аналитика YYYY-MM-DD.json")
     s.add_argument("--territory", help="файл со списком ИНН территории — данные из Checko")
     s.add_argument("--cache", help="каталог кеша Checko (по умолчанию рядом с базой)")
+    s.add_argument("--feeds", help="файл с RSS-фидами и Telegram-каналами, по одному в строке")
     s.add_argument("--date", help="день (по умолчанию сегодня)")
     s.add_argument("--out", help="каталог для дайджестов в Markdown")
     s.add_argument("--telegram", action="store_true", help="слать в Telegram (TELEGRAM_TOKEN)")
@@ -208,6 +230,11 @@ def main(argv: list[str] | None = None) -> None:
     s = sub.add_parser("checko-plan", help="сколько запросов к Checko в день уйдёт на территорию")
     s.add_argument("territory")
     s.set_defaults(fn=cmd_checko_plan)
+
+    s = sub.add_parser("news-test", help="проверить источники новостей")
+    s.add_argument("--db", default="radar.db")
+    s.add_argument("feeds")
+    s.set_defaults(fn=cmd_news_test)
 
     s = sub.add_parser("metrics", help="метрики пилота")
     s.add_argument("--db", default="radar.db")

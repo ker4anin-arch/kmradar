@@ -31,6 +31,38 @@ python -m kmradar metrics                                  # метрики пи
 `run` по cron в ~03:00, дайджест уходит сразу после прогона; рассылка к 08:30 —
 отдельной задачей по cron, если нужен точный час.
 
+## Запуск на сервере
+
+Нужен VPS в России (персональные данные граждан РФ хранятся в РФ), Ubuntu 22.04+
+или Debian 12+, 1 ядро и 1 ГБ памяти хватит. Входящие порты не нужны: бот сам
+опрашивает Telegram.
+
+```bash
+git clone https://github.com/ker4anin-arch/kmradar.git && cd kmradar
+sudo ./deploy/install.sh          # первый запуск создаст /etc/kmradar.env
+sudo nano /etc/kmradar.env        # TELEGRAM_TOKEN от @BotFather
+sudo ./deploy/install.sh          # второй запуск включит бота и таймер
+```
+
+Профили КМ — файл как `fixtures/demo/kms.json`, в `chat_id` — Telegram ID КМ
+(КМ узнаёт его, написав @userinfobot):
+
+```bash
+cd /opt/kmradar
+sudo -u kmradar python3 -m kmradar add-km --db /var/lib/kmradar/radar.db /path/to/kms.json
+```
+
+Что работает после установки:
+
+- `kmradar-daily.timer` — по будням в 08:25 по Москве собирает события из
+  `/var/lib/kmradar/data/<дата>.json` и рассылает дайджесты;
+- `kmradar-bot.service` — постоянно принимает нажатия кнопок.
+
+Пока нет подключений к Checko и ЕИС, файл дня кладёт аналитик (режим Wizard of
+Oz, формат ниже). Проверка: `systemctl status kmradar-bot`,
+`journalctl -u kmradar-daily`, метрики —
+`sudo -u kmradar python3 -m kmradar metrics --db /var/lib/kmradar/radar.db`.
+
 ## Как устроено
 
 ```

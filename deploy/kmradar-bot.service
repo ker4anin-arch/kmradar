@@ -1,0 +1,15 @@
+[Unit]
+Description=kmradar: приём нажатий кнопок в Telegram
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=kmradar
+WorkingDirectory=/opt/kmradar
+EnvironmentFile=/etc/kmradar.env
+ExecStart=/usr/bin/python3 -m kmradar bot --db /var/lib/kmradar/radar.db
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

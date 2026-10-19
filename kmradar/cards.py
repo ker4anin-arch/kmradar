@@ -52,8 +52,22 @@ def describe(event: Event) -> str:
         if f.get("number"):
             details.append(f"ЕИС № {f['number']}")
         return f"{line} ({', '.join(details)})."
+    if t == "contract_signed":
+        line = "Заключён госконтракт"
+        if f.get("subject"):
+            line += f" «{f['subject']}»"
+        if f.get("amount"):
+            line += f", цена {money(f['amount'])}"
+        if f.get("customer"):
+            line += f", заказчик — {f['customer']}"
+        details = [f"дата {when}"]
+        if f.get("law"):
+            details.append(f"{f['law']}-ФЗ")
+        if f.get("number"):
+            details.append(f"реестровый № {f['number']}")
+        return f"{line} ({', '.join(details)})."
     if t == "leasing":
-        line = f"Новый {f.get('kind', 'лизинг')} от {when}"
+        line = f"Новый {'договор лизинга' if f.get('kind', 'лизинг') == 'лизинг' else 'залог имущества'} от {when}"
         if f.get("subject"):
             line += f": {f['subject']}"
         if f.get("counterparty"):

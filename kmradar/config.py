@@ -23,6 +23,8 @@ class Signal:
 SIGNALS: dict[str, Signal] = {s.code: s for s in [
     Signal("tender_win", "Победа в закупке", "ЕИС", 1.0, 7,
            ("guarantee", "contract_loan"), urgent=True),
+    Signal("contract_signed", "Заключён госконтракт", "ЕИС", 0.8, 14,
+           ("contract_loan", "guarantee")),
     Signal("leasing", "Лизинг / залог имущества", "Федресурс", 0.6, 30,
            ("loan", "leasing", "insurance")),
     Signal("director_change", "Смена руководителя", "ЕГРЮЛ", 0.6, 30,

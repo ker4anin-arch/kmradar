@@ -38,7 +38,7 @@ def deadline(event: Event) -> date:
 
 
 def size_factor(event: Event, median_contract: float, cfg: ScoringConfig = SCORING) -> float:
-    if event.type != "tender_win":
+    if event.type not in ("tender_win", "contract_signed"):
         return 1.0
     amount = event.facts.get("amount") or 0
     if median_contract <= 0:

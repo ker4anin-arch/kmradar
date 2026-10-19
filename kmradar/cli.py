@@ -13,7 +13,7 @@ from .feedback import record_feedback, record_outcome
 from .metrics import report
 from .models import KMProfile
 from .pipeline import run_day
-from .sources import FixtureSource
+from .sources import CompositeSource, FixtureSource
 from .storage import Storage
 
 DEMO_DIR = Path(__file__).resolve().parent.parent / "fixtures" / "demo"
@@ -74,10 +74,30 @@ def cmd_add_km(args: argparse.Namespace) -> None:
     print(f"Профилей КМ загружено: {len(kms)}")
 
 
+def _checko(args: argparse.Namespace):
+    from .checko import CheckoClient, CheckoError, CheckoSource
+    try:
+        client = CheckoClient(os.environ.get("CHECKO_API_KEY", ""))
+    except CheckoError as exc:
+        print(exc); sys.exit(1)
+    territory = CheckoSource.read_territory(args.territory) if getattr(args, "territory", None) else []
+    cache = args.cache or str(Path(args.db).resolve().parent / "checko-cache")
+    return CheckoSource(client, territory, cache)
+
+
 def cmd_run(args: argparse.Namespace) -> None:
     db = Storage(args.db)
     day = date.fromisoformat(args.date) if args.date else date.today()
-    res = run_day(db, FixtureSource(args.source), day, _delivery(args))
+    sources = []
+    if args.territory and Path(args.territory).is_file():
+        sources.append(_checko(args))
+    elif args.territory:
+        print(f"Файла территории {args.territory} нет — Checko пропускаю.")
+    if args.source:
+        sources.append(FixtureSource(args.source))
+    if not sources:
+        print("Укажите --territory (Checko) и/или --source (файлы аналитика)."); sys.exit(1)
+    res = run_day(db, CompositeSource(*sources), day, _delivery(args))
     sent = {k: len(d.cards) for k, d in res.digests.items()}
     print(f"{day}: новых событий {res.new_events}, карточек по КМ: {sent}")
 
@@ -94,6 +114,27 @@ def cmd_outcome(args: argparse.Namespace) -> None:
     print(res.message)
     if not res.ok:
         sys.exit(1)
+
+
+def cmd_checko_test(args: argparse.Namespace) -> None:
+    """Снимок одной компании из Checko — проверить, что данные разбираются верно."""
+    src = _checko(args)
+    state, wins = src.snapshot(args.inn, date.today())
+    if not state:
+        print("Нет данных по этому ИНН."); sys.exit(1)
+    short = {k: v for k, v in state.items() if k not in ("founders",)}
+    short["founders"] = [f["name"] for f in state["founders"]]
+    print(json.dumps(short, ensure_ascii=False, indent=1))
+    print(f"госконтрактов за {30} дней: {len(wins)}; запросов к Checko: {src.client.requests}")
+
+
+def cmd_checko_plan(args: argparse.Namespace) -> None:
+    from .checko import CheckoSource, daily_requests
+    n = len(CheckoSource.read_territory(args.territory))
+    plan = daily_requests(n)
+    print(f"Компаний в территории: {n}")
+    print(f"Запросов к Checko в день: в среднем {plan['total']} ({plan['per_company']} на компанию); "
+          f"первый день — около {n * 8}, пока заполняется кеш.")
 
 
 def cmd_metrics(args: argparse.Namespace) -> None:
@@ -135,7 +176,9 @@ def main(argv: list[str] | None = None) -> None:
 
     s = sub.add_parser("run", help="ночной прогон за день")
     s.add_argument("--db", default="radar.db")
-    s.add_argument("--source", required=True, help="каталог с файлами YYYY-MM-DD.json")
+    s.add_argument("--source", help="каталог с файлами аналитика YYYY-MM-DD.json")
+    s.add_argument("--territory", help="файл со списком ИНН территории — данные из Checko")
+    s.add_argument("--cache", help="каталог кеша Checko (по умолчанию рядом с базой)")
     s.add_argument("--date", help="день (по умолчанию сегодня)")
     s.add_argument("--out", help="каталог для дайджестов в Markdown")
     s.add_argument("--telegram", action="store_true", help="слать в Telegram (TELEGRAM_TOKEN)")
@@ -152,6 +195,16 @@ def main(argv: list[str] | None = None) -> None:
     s.add_argument("card", type=int)
     s.add_argument("value")
     s.set_defaults(fn=cmd_outcome)
+
+    s = sub.add_parser("checko-test", help="показать снимок одной компании из Checko")
+    s.add_argument("--db", default="radar.db")
+    s.add_argument("--cache")
+    s.add_argument("inn")
+    s.set_defaults(fn=cmd_checko_test)
+
+    s = sub.add_parser("checko-plan", help="сколько запросов к Checko в день уйдёт на территорию")
+    s.add_argument("territory")
+    s.set_defaults(fn=cmd_checko_plan)
 
     s = sub.add_parser("metrics", help="метрики пилота")
     s.add_argument("--db", default="radar.db")

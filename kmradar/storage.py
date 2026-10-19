@@ -256,7 +256,8 @@ class Storage:
 
     def tender_amounts(self, since: date, inns: set[str]) -> list[int]:
         rows = self.conn.execute(
-            "SELECT inn, facts FROM event WHERE type = 'tender_win' AND event_date >= ?",
+            "SELECT inn, facts FROM event WHERE type IN ('tender_win', 'contract_signed')"
+            " AND event_date >= ?",
             (since.isoformat(),))
         return [json.loads(r["facts"]).get("amount") or 0 for r in rows if r["inn"] in inns]
 

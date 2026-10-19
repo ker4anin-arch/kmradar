@@ -10,7 +10,7 @@ WorkingDirectory=/opt/kmradar
 EnvironmentFile=/etc/kmradar.env
 Environment=TZ=Europe/Moscow
 # Чтобы дублировать дайджест в Telegram, добавьте в конец --telegram
-ExecStart=/usr/bin/python3 -m kmradar run --db /var/lib/kmradar/radar.db --source /var/lib/kmradar/data
+ExecStart=/usr/bin/python3 -m kmradar run --db /var/lib/kmradar/radar.db --source /var/lib/kmradar/data --territory /var/lib/kmradar/territory.txt
 NoNewPrivileges=true
 ProtectSystem=strict
 ReadWritePaths=/var/lib/kmradar

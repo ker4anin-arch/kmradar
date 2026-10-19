@@ -16,7 +16,8 @@
       "pledges": [{"id": "...", "date": "...", "subject": "...", "url": "..."}],
       "status": "active",                 # active | liquidating | bankrupt
       "bankruptcy_messages": [{"id": "...", "date": "...", "kind": "...", "url": "..."}],
-      "enforcement_total": 0
+      "enforcement_total": 0,
+      "efrsb_count": 0                    # число сообщений ЕФРСБ о банкротстве
     }
 
 Факты в событии берутся из данных как есть — LLM их потом не трогает.
@@ -130,6 +131,9 @@ def diff_snapshots(prev: dict[str, Any] | None, curr: dict[str, Any], today: dat
         if msg["id"] not in seen:
             add("stop", {"reason": msg.get("kind", "сообщение о банкротстве")},
                 "Федресурс", msg.get("url"), _parse_date(msg.get("date"), today))
+    efrsb_old, efrsb_new = prev.get("efrsb_count", 0) or 0, curr.get("efrsb_count", 0) or 0
+    if efrsb_new > efrsb_old:
+        add("stop", {"reason": "новые сообщения о банкротстве в ЕФРСБ"}, "ЕФРСБ")
     enf_old, enf_new = prev.get("enforcement_total", 0), curr.get("enforcement_total", 0)
     if enf_new >= cfg.enforcement_stop_amount > enf_old:
         add("stop", {"reason": "крупные исполнительные производства",
@@ -138,15 +142,17 @@ def diff_snapshots(prev: dict[str, Any] | None, curr: dict[str, Any], today: dat
 
 
 def tender_events(wins: list[dict[str, Any]], today: date, cfg: DiffConfig = DIFF) -> list[Event]:
-    """Протоколы итогов из ЕИС → события «победа в закупке».
+    """Протоколы итогов ЕИС → «победа в закупке»; заключённые контракты → «заключён госконтракт».
 
-    Формат: {"inn", "date", "amount", "subject", "customer", "number", "law", "url"}
+    Формат: {"inn", "date", "amount", "subject", "customer", "number", "law", "url",
+             "stage": "protocol" | "contract"}
     """
     events = []
     for w in wins:
         if (w.get("amount") or 0) < cfg.min_contract_amount:
             continue
         facts = {k: w[k] for k in ("amount", "subject", "customer", "number", "law") if w.get(k)}
-        events.append(Event(w["inn"], "tender_win", _parse_date(w.get("date"), today),
+        kind = "contract_signed" if w.get("stage") == "contract" else "tender_win"
+        events.append(Event(w["inn"], kind, _parse_date(w.get("date"), today),
                             facts, "ЕИС", w.get("url")))
     return events

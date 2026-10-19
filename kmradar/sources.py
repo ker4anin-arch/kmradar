@@ -30,6 +30,22 @@ class Source(Protocol):
         """События, найденные аналитиком руками (Wizard of Oz)."""
 
 
+class CompositeSource:
+    """Несколько источников сразу: например, Checko и события аналитика из файлов."""
+
+    def __init__(self, *sources: Source):
+        self.sources = sources
+
+    def snapshots(self, day: date) -> list[dict[str, Any]]:
+        return [s for src in self.sources for s in src.snapshots(day)]
+
+    def tender_wins(self, day: date) -> list[dict[str, Any]]:
+        return [w for src in self.sources for w in src.tender_wins(day)]
+
+    def manual_events(self, day: date) -> list[Event]:
+        return [e for src in self.sources for e in src.manual_events(day)]
+
+
 class FixtureSource:
     """Каталог с файлами YYYY-MM-DD.json:
 

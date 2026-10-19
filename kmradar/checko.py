@@ -21,16 +21,33 @@ from .models import Event
 
 BASE_URL = "https://api.checko.ru/v2"
 
-# Как часто обновлять каждый вид данных, дней
-CADENCE = {
-    "company": 1,
-    "fedresurs": 1,
-    "contracts": 1,
-    "enforcements": 7,
-    "bankruptcy-messages": 7,
-    "finances": 30,
+import os
+
+# Тарифы: как часто обновлять каждый вид данных (дней) и какие законы о закупках смотреть.
+# Порядок ключей — приоритет: при нехватке лимита первыми идут самые важные данные.
+PLANS = {
+    # бесплатный ключ: 100 запросов в день, ~1,5 запроса на компанию → ~60 компаний
+    "free": {"cadence": {"fedresurs": 1, "company": 3, "contracts": 7, "enforcements": 30,
+                         "bankruptcy-messages": 30, "finances": 90},
+             "laws": ("44",), "daily_limit": 100},
+    "paid": {"cadence": {"company": 1, "fedresurs": 1, "contracts": 1, "enforcements": 7,
+                         "bankruptcy-messages": 7, "finances": 30},
+             "laws": ("44", "223"), "daily_limit": 0},
 }
-CONTRACT_LAWS = ("44", "223")
+RESERVE = 3   # запросов в запасе на ручные проверки
+
+
+def plan_settings(name: str | None = None) -> dict:
+    name = (name or os.environ.get("CHECKO_PLAN") or "free").lower()
+    plan = dict(PLANS.get(name, PLANS["free"]))
+    env_limit = os.environ.get("CHECKO_DAILY_LIMIT")
+    if env_limit and env_limit.isdigit():
+        plan["daily_limit"] = int(env_limit)
+    return plan
+
+
+CADENCE = PLANS["paid"]["cadence"]
+CONTRACT_LAWS = PLANS["paid"]["laws"]
 FRESH_DAYS = 30          # свежие сообщения Федресурса и контракты, которые держим в снимке
 
 MSP = {"МИКРО": "micro", "МАЛ": "small", "СРЕДН": "medium"}
@@ -50,6 +67,7 @@ class CheckoClient:
         self.base = base
         self.fetch = fetch or self._fetch
         self.requests = 0
+        self.used_today: int | None = None   # Checko сообщает это в meta каждого ответа
 
     def _fetch(self, url: str) -> dict:  # pragma: no cover — сеть
         with urllib.request.urlopen(url, timeout=30) as resp:
@@ -63,6 +81,8 @@ class CheckoClient:
         except Exception as exc:  # noqa: BLE001
             raise CheckoError(str(exc).replace(self.key, "***")) from None
         meta = data.get("meta") or {}
+        if isinstance(meta.get("today_request_count"), int):
+            self.used_today = meta["today_request_count"]
         if meta.get("status") not in (None, "ok"):
             raise CheckoError(str(meta.get("message") or meta.get("status")).replace(self.key, "***"))
         return data
@@ -196,7 +216,8 @@ class CheckoSource:
     """Источник для pipeline: территория — список ИНН (файл, по одному в строке)."""
 
     def __init__(self, client: CheckoClient, territory: list[str], cache_dir: str | Path,
-                 log: Callable[[str], None] = print):
+                 log: Callable[[str], None] = print, plan: dict | None = None):
+        self.plan = plan or plan_settings()
         self.client = client
         self.territory = territory
         self.cache = Path(cache_dir)
@@ -221,8 +242,14 @@ class CheckoSource:
         if path.exists():
             saved = json.loads(path.read_text(encoding="utf-8"))
             age = (day - date.fromisoformat(saved["fetched"])).days
-            if 0 <= age < CADENCE.get(endpoint, 1):
+            if 0 <= age < self.plan["cadence"].get(endpoint, 1):
                 return saved["data"]
+        limit = self.plan["daily_limit"]
+        if limit and not self.stopped:
+            used = self.client.used_today if self.client.used_today is not None else self.client.requests
+            if used >= limit - RESERVE:
+                self.stopped = True
+                self.log(f"checko: дневной лимит {limit} почти исчерпан — дальше данные из кеша")
         if not self.stopped:
             try:
                 data = self.client.get(endpoint, inn=inn, **params)
@@ -240,32 +267,38 @@ class CheckoSource:
         company = self._cached(inn, "company", day)
         if not company or not (company.get("data") or {}).get("ИНН"):
             return None, []
+        # порядок — приоритет при нехватке лимита
+        parts = {"fedresurs": self._cached(inn, "fedresurs", day, sort="-date")}
+        contracts = {law: self._cached(inn, "contracts", day, law=law, role="supplier", sort="-date")
+                     for law in self.plan["laws"]}
+        for ep in ("finances", "enforcements", "bankruptcy-messages"):
+            parts[ep] = self._cached(inn, ep, day)
         state = map_company(
-            company,
-            fedresurs=self._cached(inn, "fedresurs", day, sort="-date"),
-            finances=self._cached(inn, "finances", day),
-            enforcements=self._cached(inn, "enforcements", day),
-            bankruptcy=self._cached(inn, "bankruptcy-messages", day),
-            today=day,
+            company, fedresurs=parts["fedresurs"], finances=parts["finances"],
+            enforcements=parts["enforcements"], bankruptcy=parts["bankruptcy-messages"], today=day,
         )
+        # какие данные реально есть: diff не сравнивает то, чего не было во вчерашнем снимке
+        state["_sources"] = ["company"] + [ep for ep, resp in parts.items() if resp]
         wins = []
-        for law in CONTRACT_LAWS:
-            resp = self._cached(inn, "contracts", day, law=law, role="supplier", sort="-date")
+        for law, resp in contracts.items():
             wins += map_contracts(inn, resp or {}, law, day)
         return state, wins
 
     # --- протокол Source ----------------------------------------------------
     def snapshots(self, day: date) -> list[dict[str, Any]]:
         states, self._wins = [], []
-        for inn in self.territory:
+        # сначала уже известные компании (их события важнее), потом новые
+        known = [i for i in self.territory if (self.cache / i / "company.json").exists()]
+        order = known + [i for i in self.territory if i not in known]
+        for inn in order:
             state, wins = self.snapshot(inn, day)
             if state:
                 states.append(state)
                 self._wins += wins
             else:
                 self.log(f"checko: нет данных по {inn}, снимок пропущен")
-        self.log(f"checko: компаний {len(states)}/{len(self.territory)}, "
-                 f"запросов {self.client.requests}")
+        self.log(f"checko: компаний {len(states)}/{len(self.territory)}, запросов {self.client.requests}"
+                 + (f", за сутки по данным Checko {self.client.used_today}" if self.client.used_today else ""))
         return states
 
     def tender_wins(self, day: date) -> list[dict[str, Any]]:
@@ -275,8 +308,46 @@ class CheckoSource:
         return []
 
 
-def daily_requests(n_companies: int) -> dict[str, float]:
+def daily_requests(n_companies: int, plan: dict | None = None) -> dict[str, float]:
     """Сколько запросов в среднем уходит в день на территорию из n компаний."""
-    per_company = sum((len(CONTRACT_LAWS) if ep == "contracts" else 1) / days
-                      for ep, days in CADENCE.items())
-    return {"per_company": round(per_company, 2), "total": round(per_company * n_companies)}
+    plan = plan or plan_settings()
+    per_company = sum((len(plan["laws"]) if ep == "contracts" else 1) / days
+                      for ep, days in plan["cadence"].items())
+    first = 1 + len(plan["laws"]) + 4
+    limit = plan["daily_limit"]
+    return {"per_company": round(per_company, 2), "total": round(per_company * n_companies),
+            "first_day": first * n_companies, "limit": limit,
+            "max_companies": int((limit - RESERVE) / per_company) if limit else None}
+
+
+def seed_from_leasing(client: CheckoClient, lessor_inn: str, limit: int, cache_dir: str | Path,
+                      day: date | None = None) -> list[dict[str, str]]:
+    """Компании со свежими договорами лизинга у лизинговой компании — быстрый способ
+    набрать территорию, где события есть уже в первый день. Стоит 1 + limit запросов;
+    карточки компаний сохраняются в кеш и повторно не запрашиваются."""
+    day = day or date.today()
+    resp = client.get("fedresurs", inn=lessor_inn, sort="-date")
+    own = str((resp.get("company") or {}).get("ОГРН", ""))
+    ogrns: list[str] = []
+    for r in _records(resp):
+        if LEASE_RE.match(str(r.get("Тип") or "")):
+            for p in map(str, r.get("Участники") or []):
+                if len(p) == 13 and p != own and p not in ogrns:
+                    ogrns.append(p)
+    out = []
+    for ogrn in ogrns:
+        if len(out) >= limit:
+            break
+        company = client.get("company", ogrn=ogrn)
+        c = company.get("data") or {}
+        inn = str(c.get("ИНН") or "")
+        okved = str((c.get("ОКВЭД") or {}).get("Код") or "")
+        if len(inn) != 10 or okved.startswith("64"):   # банки и прочие финорганизации пропускаем
+            continue
+        path = Path(cache_dir) / inn / "company.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps({"fetched": day.isoformat(), "data": company}, ensure_ascii=False),
+                        encoding="utf-8")
+        out.append({"inn": inn, "name": c.get("НаимСокр") or "", "region": str((c.get("Регион") or {}).get("Код") or ""),
+                    "okved": okved})
+    return out

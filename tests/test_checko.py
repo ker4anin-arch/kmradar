@@ -6,8 +6,8 @@ from urllib.parse import parse_qs, urlsplit
 
 import pytest
 
-from kmradar.checko import (CheckoClient, CheckoError, CheckoSource, daily_requests,
-                            map_company, map_contracts)
+from kmradar.checko import (PLANS, CheckoClient, CheckoError, CheckoSource, daily_requests,
+                            map_company, map_contracts, seed_from_leasing)
 from kmradar.cards import render
 from kmradar.diff import diff_snapshots, tender_events
 from kmradar.digest import build_cards
@@ -135,7 +135,8 @@ def test_client_hides_key_in_errors():
 
 def test_cache_cadence_and_fallback(tmp_path):
     api = FakeAPI()
-    src = CheckoSource(CheckoClient("secret", api), ["1424008710"], tmp_path, log=lambda m: None)
+    src = CheckoSource(CheckoClient("secret", api), ["1424008710"], tmp_path, log=lambda m: None,
+                       plan=PLANS["paid"])
     state, _ = src.snapshot("1424008710", DAY)
     assert state and api.calls.count("finances") == 1 and api.calls.count("contracts") == 2
     api.calls.clear()
@@ -164,7 +165,8 @@ def test_end_to_end_with_pipeline(tmp_path):
     api = FakeAPI()
     db = Storage(str(tmp_path / "r.db"))
     db.save_km(KMProfile("km", "КМ Якутия", ["14"], ["35"], products=["leasing", "contract_loan"]))
-    src = CheckoSource(CheckoClient("secret", api), ["1424008710"], tmp_path / "cache", log=lambda m: None)
+    src = CheckoSource(CheckoClient("secret", api), ["1424008710"], tmp_path / "cache", log=lambda m: None,
+                       plan=PLANS["paid"])
     assert run_day(db, src, date(2026, 10, 19)).new_events == 0          # базовый снимок
 
     c = copy.deepcopy(COMPANY)
@@ -190,9 +192,59 @@ def test_end_to_end_with_pipeline(tmp_path):
 
 
 def test_daily_request_plan():
-    plan = daily_requests(100)
-    assert plan["per_company"] == pytest.approx(4.32, abs=0.01)
-    assert plan["total"] == 432
+    paid = daily_requests(100, PLANS["paid"])
+    assert paid["per_company"] == pytest.approx(4.32, abs=0.01) and paid["max_companies"] is None
+    free = daily_requests(50, PLANS["free"])
+    assert free["per_company"] == pytest.approx(1.55, abs=0.01)
+    assert free["max_companies"] == 62 and free["first_day"] == 300
+
+
+def test_free_plan_stops_before_daily_limit(tmp_path):
+    api = FakeAPI()
+    used = {"n": 90}
+
+    def fetch(url):
+        used["n"] += 1
+        data = api(url)
+        data["meta"] = {"status": "ok", "today_request_count": used["n"]}
+        return data
+
+    logs = []
+    src = CheckoSource(CheckoClient("secret", fetch), ["1424008710", "7707083893"], tmp_path,
+                       log=logs.append, plan=PLANS["free"])
+    src.snapshots(DAY)
+    assert used["n"] == 97                      # 100 − запас 3, дальше ни одного запроса
+    assert src.stopped and any("лимит" in m for m in logs)
+
+
+def test_late_finances_do_not_fake_revenue_growth():
+    prev = map_company(COMPANY, today=DAY)
+    prev["_sources"] = ["company", "fedresurs"]
+    curr = map_company(COMPANY, finances={"data": {"2024": {"2110": 10}, "2025": {"2110": 30}}}, today=DAY)
+    curr["_sources"] = ["company", "fedresurs", "finances"]
+    assert diff_snapshots(prev, curr, DAY) == []
+
+
+def test_seed_from_leasing(tmp_path):
+    lessor = {"company": {"ОГРН": "1027700000001"}, "data": {"Записи": [
+        rec("A", "FinancialLeaseContract", "2026-10-19", "1027700000001",
+            participants=["1027700000001", OGRN]),
+        rec("B", "FinancialLeaseContract", "2026-10-19", "1027700000001",
+            participants=["1027700067328"]),                                   # банк — пропустим
+        rec("C", "CreditorIntentionGoToCourt", "2026-10-19", "1027700000001",
+            participants=["1111111111111"])]}, "meta": {"status": "ok"}}
+    bank = {"data": {"ИНН": "7728168971", "НаимСокр": "АО Банк", "ОКВЭД": {"Код": "64.19"}},
+            "meta": {"status": "ok"}}
+
+    def fetch(url):
+        q = parse_qs(urlsplit(url).query)
+        if "fedresurs" in url:
+            return lessor
+        return COMPANY if q["ogrn"] == [OGRN] else bank
+
+    found = seed_from_leasing(CheckoClient("secret", fetch), "7707009586", 5, tmp_path, DAY)
+    assert found == [{"inn": "1424008710", "name": 'ООО "ТЕПЛОСТРОЙ"', "region": "14", "okved": "35.30.14"}]
+    assert (tmp_path / "1424008710" / "company.json").exists()     # повторно не запрашивается
 
 
 def test_real_shapes_round_trip_through_diff():

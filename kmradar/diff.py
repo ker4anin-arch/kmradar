@@ -99,8 +99,12 @@ def diff_snapshots(prev: dict[str, Any] | None, curr: dict[str, Any], today: dat
         add("msp_upgrade", {"old": MSP_TITLE[old_c], "new": MSP_TITLE[new_c]}, "Реестр МСП")
 
     # 7. Появилась новая отчётность с ростом выручки > N%
+    def had(source: str) -> bool:
+        """Источник был и вчера, и сегодня (для снимков Checko; у остальных — всегда да)."""
+        return all(source in s.get("_sources", [source]) for s in (prev, curr))
+
     rev_old, rev_new = prev.get("revenue", {}), curr.get("revenue", {})
-    for year in sorted(set(rev_new) - set(rev_old)):
+    for year in (sorted(set(rev_new) - set(rev_old)) if rev_old and had("finances") else []):
         last, before = rev_new.get(year), rev_new.get(str(int(year) - 1))
         if last and before and before > 0:
             growth = (last - before) / before * 100
@@ -133,10 +137,10 @@ def diff_snapshots(prev: dict[str, Any] | None, curr: dict[str, Any], today: dat
             add("stop", {"reason": msg.get("kind", "сообщение о банкротстве")},
                 "Федресурс", msg.get("url"), _parse_date(msg.get("date"), today))
     efrsb_old, efrsb_new = prev.get("efrsb_count", 0) or 0, curr.get("efrsb_count", 0) or 0
-    if efrsb_new > efrsb_old:
+    if efrsb_new > efrsb_old and had("bankruptcy-messages"):
         add("stop", {"reason": "новые сообщения о банкротстве в ЕФРСБ"}, "ЕФРСБ")
     enf_old, enf_new = prev.get("enforcement_total", 0), curr.get("enforcement_total", 0)
-    if enf_new >= cfg.enforcement_stop_amount > enf_old:
+    if enf_new >= cfg.enforcement_stop_amount > enf_old and had("enforcements"):
         add("stop", {"reason": "крупные исполнительные производства",
                      "amount": enf_new}, "ФССП")
     return events

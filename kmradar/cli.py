@@ -139,9 +139,15 @@ def cmd_checko_plan(args: argparse.Namespace) -> None:
         sys.exit(1)
     n = len(CheckoSource.read_territory(args.territory))
     plan = daily_requests(n)
+    name = (os.environ.get("CHECKO_PLAN") or "free").lower()
+    print(f"Тариф: {name}" + (f", лимит {plan['limit']} запросов в день" if plan["limit"] else ", без лимита"))
     print(f"Компаний в территории: {n}")
-    print(f"Запросов к Checko в день: в среднем {plan['total']} ({plan['per_company']} на компанию); "
-          f"первый день — около {n * 8}, пока заполняется кеш.")
+    print(f"В обычный день: около {plan['total']} запросов ({plan['per_company']} на компанию).")
+    print(f"Первое заполнение: около {plan['first_day']} запросов"
+          + (f" — растянется на {-(-plan['first_day'] // max(1, plan['limit'] - 3))} дн." if plan["limit"] else ""))
+    if plan["max_companies"] is not None and n > plan["max_companies"]:
+        print(f"Внимание: на этом тарифе держится примерно {plan['max_companies']} компаний. "
+              f"Остальные будут обновляться реже — из кеша.")
 
 
 def cmd_news_test(args: argparse.Namespace) -> None:
@@ -159,6 +165,23 @@ def cmd_news_test(args: argparse.Namespace) -> None:
     for e in events:
         print(f"* {names[e.inn].name}: {e.facts['title']} — {e.url}")
     print(f"Компаний в базе: {len(names)}, упоминаний за {14} дней: {len(events)}")
+
+
+def cmd_checko_seed(args: argparse.Namespace) -> None:
+    """Набрать территорию из компаний со свежими договорами лизинга."""
+    from .checko import seed_from_leasing
+    src = _checko(args)
+    found = seed_from_leasing(src.client, args.lessor, args.limit, src.cache)
+    existing = set(src.read_territory(args.territory)) if Path(args.territory).is_file() else set()
+    new = [f for f in found if f["inn"] not in existing]
+    with open(args.territory, "a", encoding="utf-8") as fh:
+        for f in new:
+            fh.write(f"{f['inn']}  # {f['name']}, регион {f['region']}, ОКВЭД {f['okved']}\n")
+    for f in found:
+        print(f"{f['inn']}  регион {f['region']:>3}  ОКВЭД {f['okved']:<9} {f['name']}")
+    regions = sorted({f["region"] for f in found})
+    print(f"Добавлено в {args.territory}: {len(new)}. Регионы: {', '.join(regions)}. "
+          f"Запросов к Checko: {src.client.requests}.")
 
 
 def cmd_metrics(args: argparse.Namespace) -> None:
@@ -226,6 +249,14 @@ def main(argv: list[str] | None = None) -> None:
     s.add_argument("--cache")
     s.add_argument("inn")
     s.set_defaults(fn=cmd_checko_test)
+
+    s = sub.add_parser("checko-seed", help="набрать территорию из свежих договоров лизинга")
+    s.add_argument("--db", default="radar.db")
+    s.add_argument("--cache")
+    s.add_argument("--lessor", default="7707009586", help="ИНН лизинговой компании (по умолчанию Сбербанк Лизинг)")
+    s.add_argument("--limit", type=int, default=10, help="сколько компаний взять (каждая — 1 запрос)")
+    s.add_argument("territory", help="файл территории, куда дописать ИНН")
+    s.set_defaults(fn=cmd_checko_seed)
 
     s = sub.add_parser("checko-plan", help="сколько запросов к Checko в день уйдёт на территорию")
     s.add_argument("territory")

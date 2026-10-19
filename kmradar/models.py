@@ -22,7 +22,7 @@ class KMProfile:
     chat_id: str | None = None         # канал доставки (Telegram chat id / e-mail)
 
     def matches(self, company: "Company") -> bool:
-        if company.region not in self.regions:
+        if self.regions and company.region not in self.regions:
             return False
         codes = [company.okved, *company.okved_extra]
         if self.okved and not any(c and c.startswith(p) for c in codes for p in self.okved):

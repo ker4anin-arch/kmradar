@@ -60,8 +60,17 @@ def _delivery(args: argparse.Namespace):
 
 
 def cmd_add_km(args: argparse.Namespace) -> None:
+    path = Path(args.file)
+    if not path.is_file():
+        print(f"Файл не найден: {path}. Укажите путь к JSON с профилями КМ "
+              f"(пример — fixtures/demo/kms.json).")
+        sys.exit(1)
     db = Storage(args.db)
-    kms = load_kms(db, Path(args.file))
+    try:
+        kms = load_kms(db, path)
+    except (ValueError, TypeError) as exc:
+        print(f"Не получилось прочитать {path}: {exc}")
+        sys.exit(1)
     print(f"Профилей КМ загружено: {len(kms)}")
 
 

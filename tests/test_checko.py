@@ -229,6 +229,8 @@ def test_seed_from_leasing(tmp_path):
     lessor = {"company": {"ОГРН": "1027700000001"}, "data": {"Записи": [
         rec("A", "FinancialLeaseContract", "2026-10-19", "1027700000001",
             participants=["1027700000001", OGRN]),
+        rec("OLD", "FinancialLeaseContract", "2018-01-24", "1027700000001",
+            participants=["1027700000001", "1141448000352"]),                  # старый договор — мимо
         rec("B", "FinancialLeaseContract", "2026-10-19", "1027700000001",
             participants=["1027700067328"]),                                   # банк — пропустим
         rec("C", "CreditorIntentionGoToCourt", "2026-10-19", "1027700000001",
@@ -236,15 +238,19 @@ def test_seed_from_leasing(tmp_path):
     bank = {"data": {"ИНН": "7728168971", "НаимСокр": "АО Банк", "ОКВЭД": {"Код": "64.19"}},
             "meta": {"status": "ok"}}
 
+    calls = []
+
     def fetch(url):
         q = parse_qs(urlsplit(url).query)
         if "fedresurs" in url:
+            calls.append(q.get("page"))
             return lessor
         return COMPANY if q["ogrn"] == [OGRN] else bank
 
     found = seed_from_leasing(CheckoClient("secret", fetch), "7707009586", 5, tmp_path, DAY)
     assert found == [{"inn": "1424008710", "name": 'ООО "ТЕПЛОСТРОЙ"', "region": "14", "okved": "35.30.14"}]
     assert (tmp_path / "1424008710" / "company.json").exists()     # повторно не запрашивается
+    assert calls == [["1"]]          # на странице уже есть записи старше 14 дней — дальше не листаем
 
 
 def test_real_shapes_round_trip_through_diff():

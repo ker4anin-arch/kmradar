@@ -320,20 +320,38 @@ def daily_requests(n_companies: int, plan: dict | None = None) -> dict[str, floa
             "max_companies": int((limit - RESERVE) / per_company) if limit else None}
 
 
+SEED_FRESH_DAYS = 14   # договор моложе — карточка гарантированно пройдёт порог
+
+
 def seed_from_leasing(client: CheckoClient, lessor_inn: str, limit: int, cache_dir: str | Path,
-                      day: date | None = None) -> list[dict[str, str]]:
-    """Компании со свежими договорами лизинга у лизинговой компании — быстрый способ
-    набрать территорию, где события есть уже в первый день. Стоит 1 + limit запросов;
-    карточки компаний сохраняются в кеш и повторно не запрашиваются."""
+                      day: date | None = None, max_pages: int = 3,
+                      log: Callable[[str], None] = lambda m: None) -> list[dict[str, str]]:
+    """Компании со свежими (до 14 дней) договорами лизинга у лизинговой компании —
+    быстрый способ набрать территорию, где события есть уже в первый день.
+    Стоит до max_pages запросов на ленту + 1 запрос на каждую компанию; карточки
+    компаний сохраняются в кеш и повторно не запрашиваются."""
     day = day or date.today()
-    resp = client.get("fedresurs", inn=lessor_inn, sort="-date")
-    own = str((resp.get("company") or {}).get("ОГРН", ""))
+    fresh_from = (day - timedelta(days=SEED_FRESH_DAYS)).isoformat()
     ogrns: list[str] = []
-    for r in _records(resp):
-        if LEASE_RE.match(str(r.get("Тип") or "")):
+    for page in range(1, max_pages + 1):
+        resp = client.get("fedresurs", inn=lessor_inn, sort="-date", page=page)
+        own = str((resp.get("company") or {}).get("ОГРН", ""))
+        recs = _records(resp)
+        for r in recs:
+            if not LEASE_RE.match(str(r.get("Тип") or "")) or str(r.get("Дата") or "") < fresh_from:
+                continue
             for p in map(str, r.get("Участники") or []):
                 if len(p) == 13 and p != own and p not in ogrns:
                     ogrns.append(p)
+        oldest = min((str(r.get("Дата") or "") for r in recs), default="")
+        leases = [str(r.get("Дата") or "") for r in recs if LEASE_RE.match(str(r.get("Тип") or ""))]
+        name = (resp.get("company") or {}).get("НаимСокр") or lessor_inn
+        log(f"{name}, стр. {page}: записей {len(recs)} ({min(recs, key=lambda r: r.get('Дата') or '').get('Дата') if recs else '—'}"
+            f" … {max(recs, key=lambda r: r.get('Дата') or '').get('Дата') if recs else '—'}), "
+            f"договоров лизинга {len(leases)}, самый свежий {max(leases, default='—')}, "
+            f"кандидатов не старше {SEED_FRESH_DAYS} дн.: {len(ogrns)}")
+        if len(ogrns) >= limit * 2 or not recs or oldest < fresh_from:
+            break
     out = []
     for ogrn in ogrns:
         if len(out) >= limit:

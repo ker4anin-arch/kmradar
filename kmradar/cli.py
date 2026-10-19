@@ -171,7 +171,16 @@ def cmd_checko_seed(args: argparse.Namespace) -> None:
     """Набрать территорию из компаний со свежими договорами лизинга."""
     from .checko import seed_from_leasing
     src = _checko(args)
-    found = seed_from_leasing(src.client, args.lessor, args.limit, src.cache)
+    found = []
+    for lessor in args.lessor.split(","):
+        if len(found) >= args.limit:
+            break
+        found += seed_from_leasing(src.client, lessor.strip(), args.limit - len(found), src.cache,
+                                   max_pages=args.pages, log=print)
+    if not found:
+        print(f"Свежих (до 14 дней) договоров лизинга не нашлось. Попробуйте другую лизинговую "
+              f"компанию: --lessor ИНН[,ИНН…]. Запросов потрачено: {src.client.requests}.")
+        return
     existing = set(src.read_territory(args.territory)) if Path(args.territory).is_file() else set()
     new = [f for f in found if f["inn"] not in existing]
     with open(args.territory, "a", encoding="utf-8") as fh:
@@ -253,8 +262,9 @@ def main(argv: list[str] | None = None) -> None:
     s = sub.add_parser("checko-seed", help="набрать территорию из свежих договоров лизинга")
     s.add_argument("--db", default="radar.db")
     s.add_argument("--cache")
-    s.add_argument("--lessor", default="7707009586", help="ИНН лизинговой компании (по умолчанию Сбербанк Лизинг)")
+    s.add_argument("--lessor", default="7707009586", help="ИНН лизинговых компаний через запятую (по умолчанию Сбербанк Лизинг)")
     s.add_argument("--limit", type=int, default=10, help="сколько компаний взять (каждая — 1 запрос)")
+    s.add_argument("--pages", type=int, default=2, help="сколько страниц ленты лизинговой компании смотреть (каждая — 1 запрос)")
     s.add_argument("territory", help="файл территории, куда дописать ИНН")
     s.set_defaults(fn=cmd_checko_seed)
 

@@ -1,0 +1,5 @@
+# Замените radar.example.ru на свой домен. Caddy сам получит HTTPS-сертификат.
+radar.example.ru {
+	encode gzip
+	reverse_proxy 127.0.0.1:8080
+}

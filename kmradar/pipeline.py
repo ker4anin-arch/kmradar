@@ -68,8 +68,10 @@ def make_digests(db: Storage, day: date, delivery: Delivery | None = None,
             card.text = render(card, companies[card.inn], km, writer)
             db.save_card(card)
         db.save_digest(km.km_id, day, digest.strong_count, digest.skipped, len(digest.cards))
+        cautions = [render_caution(companies[inn], evs) for inn, evs in digest.cautions.items()]
+        for text in cautions:
+            db.save_caution(km.km_id, day, text)
         if delivery:
-            cautions = [render_caution(companies[inn], evs) for inn, evs in digest.cautions.items()]
             if digest.cards or cautions:
                 delivery.send_digest(Outgoing(km, day, intro_text(day, len(digest.cards),
                                                                   digest.skipped),

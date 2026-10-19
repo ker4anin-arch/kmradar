@@ -91,6 +91,23 @@ def cmd_metrics(args: argparse.Namespace) -> None:
     print(report(Storage(args.db), args.km))
 
 
+def cmd_link(args: argparse.Namespace) -> None:
+    db = Storage(args.db)
+    kms = db.kms() if args.km == "all" else [k for k in [db.km(args.km)] if k]
+    if not kms:
+        print(f"КМ не найден: {args.km}")
+        sys.exit(1)
+    base = args.base_url.rstrip("/")
+    for km in kms:
+        print(f"{km.km_id}\t{km.name}\t{base}/k/{db.new_link(km.km_id)}")
+    print("Старые ссылки этих КМ больше не работают.", file=sys.stderr)
+
+
+def cmd_web(args: argparse.Namespace) -> None:  # pragma: no cover
+    from .web import serve
+    serve(args.db, args.host, args.port)
+
+
 def cmd_bot(args: argparse.Namespace) -> None:  # pragma: no cover
     from .bot import poll
     poll(Storage(args.db), TelegramDelivery(os.environ["TELEGRAM_TOKEN"]))
@@ -131,6 +148,18 @@ def main(argv: list[str] | None = None) -> None:
     s.add_argument("--db", default="radar.db")
     s.add_argument("--km")
     s.set_defaults(fn=cmd_metrics)
+
+    s = sub.add_parser("link", help="выдать КМ новую личную ссылку на веб-дайджест")
+    s.add_argument("--db", default="radar.db")
+    s.add_argument("--base-url", required=True, help="например https://radar.example.ru")
+    s.add_argument("km", help="km_id или all")
+    s.set_defaults(fn=cmd_link)
+
+    s = sub.add_parser("web", help="веб-версия дайджеста")
+    s.add_argument("--db", default="radar.db")
+    s.add_argument("--host", default="127.0.0.1")
+    s.add_argument("--port", type=int, default=8080)
+    s.set_defaults(fn=cmd_web)
 
     s = sub.add_parser("bot", help="принимать нажатия кнопок в Telegram")
     s.add_argument("--db", default="radar.db")

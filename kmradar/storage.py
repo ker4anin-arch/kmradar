@@ -6,7 +6,9 @@
 """
 from __future__ import annotations
 
+import hashlib
 import json
+import secrets
 import sqlite3
 from dataclasses import asdict
 from datetime import date, datetime, timedelta
@@ -75,6 +77,24 @@ CREATE TABLE IF NOT EXISTS km_weight (
     value REAL NOT NULL,
     PRIMARY KEY (km_id, type)
 );
+CREATE TABLE IF NOT EXISTS km_link (
+    token_hash TEXT PRIMARY KEY,
+    km_id TEXT NOT NULL,
+    created TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS caution (
+    km_id TEXT NOT NULL,
+    day TEXT NOT NULL,
+    text TEXT NOT NULL,
+    PRIMARY KEY (km_id, day, text)
+);
+CREATE TABLE IF NOT EXISTS miss_reason (
+    id INTEGER PRIMARY KEY,
+    km_id TEXT NOT NULL,
+    type TEXT NOT NULL,
+    text TEXT NOT NULL,
+    at TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS feedback_log (
     id INTEGER PRIMARY KEY,
     card_id INTEGER NOT NULL,
@@ -92,12 +112,73 @@ def _d(value: str) -> date:
 
 class Storage:
     def __init__(self, path: str | Path = ":memory:"):
-        self.conn = sqlite3.connect(str(path))
+        self.conn = sqlite3.connect(str(path), timeout=15)
         self.conn.row_factory = sqlite3.Row
+        if str(path) != ":memory:":
+            # веб-сервер и ночной прогон пишут в одну базу одновременно
+            self.conn.execute("PRAGMA journal_mode=WAL")
         self.conn.executescript(SCHEMA)
 
     def close(self) -> None:
         self.conn.close()
+
+    # --- личные ссылки КМ (храним только хеш) -------------------------------
+    @staticmethod
+    def _hash(token: str) -> str:
+        return hashlib.sha256(token.encode()).hexdigest()
+
+    def new_link(self, km_id: str) -> str:
+        """Новая личная ссылка КМ; старая перестаёт работать."""
+        token = secrets.token_urlsafe(24)
+        self.conn.execute("DELETE FROM km_link WHERE km_id = ?", (km_id,))
+        self.conn.execute("INSERT INTO km_link VALUES (?, ?, ?)",
+                          (self._hash(token), km_id, datetime.now().isoformat(timespec="seconds")))
+        self.conn.commit()
+        return token
+
+    def km_by_token(self, token: str) -> KMProfile | None:
+        row = self.conn.execute("SELECT km_id FROM km_link WHERE token_hash = ?",
+                                (self._hash(token),)).fetchone()
+        return self.km(row["km_id"]) if row else None
+
+    # --- что показать на странице КМ ----------------------------------------
+    def save_caution(self, km_id: str, day: date, text: str) -> None:
+        self.conn.execute("INSERT OR IGNORE INTO caution VALUES (?, ?, ?)",
+                          (km_id, day.isoformat(), text))
+        self.conn.commit()
+
+    def cautions(self, km_id: str, day: date) -> list[str]:
+        return [r["text"] for r in self.conn.execute(
+            "SELECT text FROM caution WHERE km_id = ? AND day = ?", (km_id, day.isoformat()))]
+
+    def cards_for_day(self, km_id: str, day: date) -> list[sqlite3.Row]:
+        return list(self.conn.execute(
+            "SELECT * FROM card WHERE km_id = ? AND created = ? ORDER BY urgent DESC, score DESC",
+            (km_id, day.isoformat())))
+
+    def digest_days(self, km_id: str, until: date, limit: int = 10) -> list[date]:
+        rows = self.conn.execute(
+            "SELECT day FROM digest WHERE km_id = ? AND day <= ? AND cards > 0"
+            " UNION SELECT day FROM caution WHERE km_id = ? AND day <= ?"
+            " ORDER BY day DESC LIMIT ?",
+            (km_id, until.isoformat(), km_id, until.isoformat(), limit))
+        return [_d(r["day"]) for r in rows]
+
+    def pending_outcomes(self, km_id: str, today: date, days: int) -> list[sqlite3.Row]:
+        cutoff = (today - timedelta(days=days)).isoformat()
+        return list(self.conn.execute(
+            "SELECT * FROM card WHERE km_id = ? AND feedback = 'contacted' AND outcome IS NULL"
+            " AND substr(feedback_at, 1, 10) <= ? ORDER BY id", (km_id, cutoff)))
+
+    def save_reason(self, km_id: str, type_: str, text: str, at: datetime) -> None:
+        self.conn.execute("INSERT INTO miss_reason (km_id, type, text, at) VALUES (?, ?, ?, ?)",
+                          (km_id, type_, text, at.isoformat(timespec="seconds")))
+        self.conn.commit()
+
+    def reasons(self, km_id: str | None = None) -> list[sqlite3.Row]:
+        if km_id:
+            return list(self.conn.execute("SELECT * FROM miss_reason WHERE km_id = ?", (km_id,)))
+        return list(self.conn.execute("SELECT * FROM miss_reason"))
 
     # --- КМ -----------------------------------------------------------------
     def save_km(self, km: KMProfile) -> None:

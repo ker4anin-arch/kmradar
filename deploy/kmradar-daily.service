@@ -8,4 +8,10 @@ Type=oneshot
 User=kmradar
 WorkingDirectory=/opt/kmradar
 EnvironmentFile=/etc/kmradar.env
-ExecStart=/usr/bin/python3 -m kmradar run --db /var/lib/kmradar/radar.db --source /var/lib/kmradar/data --telegram
+Environment=TZ=Europe/Moscow
+# Чтобы дублировать дайджест в Telegram, добавьте в конец --telegram
+ExecStart=/usr/bin/python3 -m kmradar run --db /var/lib/kmradar/radar.db --source /var/lib/kmradar/data
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/kmradar
+PrivateTmp=true

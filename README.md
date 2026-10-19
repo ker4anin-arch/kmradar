@@ -33,35 +33,48 @@ python -m kmradar metrics                                  # метрики пи
 
 ## Запуск на сервере
 
-Нужен VPS в России (персональные данные граждан РФ хранятся в РФ), Ubuntu 22.04+
-или Debian 12+, 1 ядро и 1 ГБ памяти хватит. Входящие порты не нужны: бот сам
-опрашивает Telegram.
+Каждый КМ получает личную ссылку и открывает дайджест в браузере — с
+компьютера или телефона. Telegram не нужен (можно включить как дубль).
+
+**Что нужно:** VPS в России (персональные данные граждан РФ хранятся в РФ),
+Ubuntu 22.04+ или Debian 12+, 1 ядро и 1 ГБ памяти; домен, A-запись которого
+указывает на IP сервера; открытые порты 80 и 443.
 
 ```bash
 git clone https://github.com/ker4anin-arch/kmradar.git && cd kmradar
-sudo ./deploy/install.sh          # первый запуск создаст /etc/kmradar.env
-sudo nano /etc/kmradar.env        # TELEGRAM_TOKEN от @BotFather
-sudo ./deploy/install.sh          # второй запуск включит бота и таймер
+sudo ./deploy/install.sh          # создаст /etc/kmradar.env и остановится
+sudo nano /etc/kmradar.env        # BASE_URL=https://ваш-домен
+sudo ./deploy/install.sh          # включит сайт, HTTPS (Caddy) и утренний запуск
 ```
 
-Профили КМ — файл как `fixtures/demo/kms.json`, в `chat_id` — Telegram ID КМ
-(КМ узнаёт его, написав @userinfobot):
+Профили КМ — JSON как `fixtures/demo/kms.json` (`chat_id` для веба не нужен),
+затем личные ссылки:
 
 ```bash
 cd /opt/kmradar
-sudo -u kmradar python3 -m kmradar add-km --db /var/lib/kmradar/radar.db /path/to/kms.json
+sudo -u kmradar python3 -m kmradar add-km --db /var/lib/kmradar/radar.db /path/kms.json
+sudo -u kmradar python3 -m kmradar link --db /var/lib/kmradar/radar.db --base-url https://ваш-домен all
 ```
+
+Ссылку отправьте КМ лично: по ней открывается его дайджест, пароля нет.
+Новая ссылка (`link <km_id>`) отключает старую. В базе хранится только хеш
+ссылки, в журнал сервера она не пишется.
 
 Что работает после установки:
 
+- `kmradar-web` — сайт на 127.0.0.1:8080, снаружи — через Caddy по HTTPS;
 - `kmradar-daily.timer` — по будням в 08:25 по Москве собирает события из
-  `/var/lib/kmradar/data/<дата>.json` и рассылает дайджесты;
-- `kmradar-bot.service` — постоянно принимает нажатия кнопок.
+  `/var/lib/kmradar/data/<дата>.json` и готовит дайджесты;
+- на странице: карточки с кнопками, «Чем закончилось?» через 7 дней после
+  «Связался», вопрос о причине после трёх «мимо» подряд.
 
 Пока нет подключений к Checko и ЕИС, файл дня кладёт аналитик (режим Wizard of
-Oz, формат ниже). Проверка: `systemctl status kmradar-bot`,
-`journalctl -u kmradar-daily`, метрики —
-`sudo -u kmradar python3 -m kmradar metrics --db /var/lib/kmradar/radar.db`.
+Oz, формат ниже). Обновление кода: `git pull && sudo ./deploy/install.sh`.
+Проверка: `systemctl status kmradar-web`, `journalctl -u kmradar-daily`,
+метрики — `sudo -u kmradar python3 -m kmradar metrics --db /var/lib/kmradar/radar.db`.
+
+Telegram как дубль: `TELEGRAM_TOKEN` в `/etc/kmradar.env` (при блокировках —
+`HTTPS_PROXY`), `chat_id` в профилях КМ и `--telegram` в `kmradar-daily.service`.
 
 ## Как устроено
 
@@ -81,7 +94,8 @@ Oz, формат ниже). Проверка: `systemctl status kmradar-bot`,
 | `writer.py` | «Зачем звонить / Первая фраза / Спросить»: шаблоны или LLM с проверкой |
 | `feedback.py` | Кнопки, личные веса, вопрос после 3 «мимо», вопрос об итоге через 7 дней |
 | `metrics.py` | Метрики пилота и пороги «идём дальше / стоп» |
-| `delivery.py`, `bot.py` | Консоль, файлы Markdown (почта / веб), Telegram |
+| `web.py` | Веб-дайджест по личной ссылке КМ: карточки, кнопки, итоги |
+| `delivery.py`, `bot.py` | Консоль, файлы Markdown, Telegram |
 | `storage.py` | SQLite; схема переносится в Postgres |
 
 Все веса, окна и лимиты — в `config.py`.
@@ -106,8 +120,8 @@ Oz, формат ниже). Проверка: `systemctl status kmradar-bot`,
   срочные**: победа в закупке с окном в несколько дней уходит всё равно.
   Первый день, за который нет вчерашних данных, не считается слабым.
 - «Уже знал» и «мимо» считаются от карточек с ответом, «связался» — от всех.
-- Открытие дайджеста = в этот день КМ нажал хотя бы одну кнопку
-  (Telegram не сообщает о прочтении).
+- Открытие дайджеста = КМ открыл страницу этого дня или нажал кнопку
+  (Telegram о прочтении не сообщает, поэтому там считаются только нажатия).
 - Окно сигнала МСП — 60 дней, отчётности — 90 (в документе «раз в год»).
 
 ## Формат данных источника

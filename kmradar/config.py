@@ -39,6 +39,9 @@ SIGNALS: dict[str, Signal] = {s.code: s for s in [
            ("credit_line", "factoring")),
     Signal("news_mention", "Компания в новостях", "Новости", 0.5, 14,
            ("loan", "credit_line", "rko")),
+    # Намерение кредитора о банкротстве: у крупных компаний бывает регулярно и
+    # банкротством не является — показываем в истории и в карточке, но не прячем поводы.
+    Signal("risk", "Риск: намерение кредитора о банкротстве", "Федресурс", 0.0, 90, ()),
     Signal("stop", "Стоп-сигнал: ликвидация, банкротство, долги", "Федресурс, ФССП",
            0.0, 90, (), stop=True),
 ]}
@@ -87,6 +90,7 @@ class DiffConfig:
     revenue_growth_pct: float = 30.0
     min_contract_amount: int = 10_000_000  # N для сигнала 1
     enforcement_stop_amount: int = 5_000_000
+    enforcement_stop_share: float = 0.01   # или 1% выручки, если это больше
 
 
 LIMITS = Limits()

@@ -84,7 +84,9 @@ def test_fedresurs_roles():
     s = map_company(COMPANY, fedresurs=f, today=DAY)
     assert [x["id"] for x in s["leasing"]] == ["L1"]
     assert [x["id"] for x in s["pledges"]] == ["P1"]
-    assert [x["id"] for x in s["bankruptcy_messages"]] == ["B1"]
+    # намерение кредитора — риск, а не стоп; намерение должника считается, только если он сам публикует
+    assert s["bankruptcy_messages"] == []
+    assert [x["id"] for x in s["risk_messages"]] == ["B1"]
 
 
 def test_contracts_mapping_and_event_type():
@@ -285,3 +287,36 @@ def test_first_snapshot_of_liquidating_company_is_stopped():
     c["data"]["Статус"] = {"Код": "101", "Наим": "В стадии ликвидации"}
     ev = diff_snapshots(None, map_company(c, today=DAY), DAY)
     assert [(e.type, e.event_date) for e in ev] == [("stop", DAY)]
+
+
+def test_creditor_intention_does_not_hide_cards():
+    from kmradar.digest import build_digest
+    from kmradar.models import Event
+    km = KMProfile("km", "КМ", [], [], products=["contract_loan"])
+    events = [Event("1", "contract_signed", DAY, {"amount": 50_000_000}, "ЕИС", id=1),
+              Event("1", "risk", DAY, {"reason": "намерение кредитора"}, "Федресурс", id=2)]
+    d = build_digest(km, events, DAY, median_contract=50_000_000)
+    assert len(d.cards) == 1 and [e.type for e in d.cards[0].events] == ["contract_signed", "risk"]
+
+
+def test_enforcement_threshold_scales_with_revenue():
+    prev = map_company(COMPANY, finances={"data": {"2025": {"2110": 2_000_000_000}}}, today=DAY)
+    big_debt = dict(prev, enforcement_total=8_000_000)          # 0,4% выручки — не стоп
+    assert diff_snapshots(prev, big_debt, DAY) == []
+    huge = dict(prev, enforcement_total=30_000_000)             # 1,5% выручки — стоп
+    assert [e.type for e in diff_snapshots(prev, huge, DAY)] == ["stop"]
+    small = map_company(COMPANY, today=DAY)                      # выручка неизвестна — порог 5 млн
+    assert [e.type for e in diff_snapshots(small, dict(small, enforcement_total=6_000_000), DAY)] == ["stop"]
+
+
+def test_old_creditor_stops_are_migrated(tmp_path):
+    from kmradar.models import Event
+    path = str(tmp_path / "r.db")
+    db = Storage(path)
+    db.save_events([Event("1", "stop", DAY, {"reason": "намерение кредитора обратиться в суд"}, "Федресурс"),
+                    Event("2", "stop", DAY, {"reason": "банкротство"}, "ЕГРЮЛ")], DAY)
+    db.save_caution("km", DAY, "⚠️ Осторожно: ООО — Намерение кредитора обратиться в суд (20.10.2026).")
+    db.close()
+    db = Storage(path)
+    assert sorted((e.inn, e.type) for e in db.events_since(DAY)) == [("1", "risk"), ("2", "stop")]
+    assert db.cautions("km", DAY) == []

@@ -124,6 +124,13 @@ class Storage:
             # веб-сервер и ночной прогон пишут в одну базу одновременно
             self.conn.execute("PRAGMA journal_mode=WAL")
         self.conn.executescript(SCHEMA)
+        self._migrate()
+
+    def _migrate(self) -> None:
+        """Намерение кредитора о банкротстве раньше считалось стоп-сигналом — переводим в риск."""
+        self.conn.execute("UPDATE event SET type = 'risk' WHERE type = 'stop' AND facts LIKE '%намерение кредитора%'")
+        self.conn.execute("DELETE FROM caution WHERE lower(text) LIKE '%намерение кредитора%'")
+        self.conn.commit()
 
     def close(self) -> None:
         self.conn.close()

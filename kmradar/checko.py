@@ -156,7 +156,7 @@ def map_company(company: dict, *, fedresurs: dict | None = None, finances: dict 
         "msp_category": msp,
         "status": status,
         "revenue": {}, "receivables": {},
-        "leasing": [], "pledges": [], "bankruptcy_messages": [],
+        "leasing": [], "pledges": [], "bankruptcy_messages": [], "risk_messages": [],
         "enforcement_total": 0, "efrsb_count": 0,
     }
 
@@ -181,7 +181,7 @@ def map_company(company: dict, *, fedresurs: dict | None = None, finances: dict 
         elif kind == "DebtorIntentionGoToCourt" and published_by_self:
             state["bankruptcy_messages"].append({**item, "kind": title.lower()})
         elif kind == "CreditorIntentionGoToCourt" and not published_by_self:
-            state["bankruptcy_messages"].append({**item, "kind": title.lower()})
+            state["risk_messages"].append({**item, "kind": title.lower()})
         elif "ликвидац" in title.lower() and published_by_self:
             state["bankruptcy_messages"].append({**item, "kind": title.lower()})
 

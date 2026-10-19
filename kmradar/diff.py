@@ -136,11 +136,20 @@ def diff_snapshots(prev: dict[str, Any] | None, curr: dict[str, Any], today: dat
         if msg["id"] not in seen:
             add("stop", {"reason": msg.get("kind", "сообщение о банкротстве")},
                 "Федресурс", msg.get("url"), _parse_date(msg.get("date"), today))
+    seen = {m["id"] for m in prev.get("risk_messages", [])}
+    for msg in curr.get("risk_messages", []):
+        if msg["id"] not in seen:
+            add("risk", {"reason": msg.get("kind", "намерение кредитора о банкротстве")},
+                "Федресурс", msg.get("url"), _parse_date(msg.get("date"), today))
     efrsb_old, efrsb_new = prev.get("efrsb_count", 0) or 0, curr.get("efrsb_count", 0) or 0
     if efrsb_new > efrsb_old and had("bankruptcy-messages"):
         add("stop", {"reason": "новые сообщения о банкротстве в ЕФРСБ"}, "ЕФРСБ")
     enf_old, enf_new = prev.get("enforcement_total", 0), curr.get("enforcement_total", 0)
-    if enf_new >= cfg.enforcement_stop_amount > enf_old and had("enforcements"):
+    # порог долгов — от размера компании: для гиганта 5 млн ₽ ничего не значат
+    revenue = curr.get("revenue") or {}
+    last_rev = revenue[max(revenue, key=int)] if revenue else 0
+    threshold = max(cfg.enforcement_stop_amount, (last_rev or 0) * cfg.enforcement_stop_share)
+    if enf_new >= threshold > enf_old and had("enforcements"):
         add("stop", {"reason": "крупные исполнительные производства",
                      "amount": enf_new}, "ФССП")
     return events
@@ -182,6 +191,11 @@ def bootstrap_events(state: dict[str, Any], today: date, history_days: int = 0) 
                                                            "counterparty": item.get("counterparty")},
                                     "Федресурс", item.get("url")))
 
+    for msg in state.get("risk_messages", []):
+        when = fresh(msg.get("date"), "risk")
+        if when:
+            events.append(Event(inn, "risk", when, {"reason": msg.get("kind", "намерение кредитора о банкротстве")},
+                                "Федресурс", msg.get("url")))
     for msg in state.get("bankruptcy_messages", []):
         when = fresh(msg.get("date"), "stop")
         if when:

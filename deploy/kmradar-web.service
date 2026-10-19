@@ -8,7 +8,7 @@ User=kmradar
 WorkingDirectory=/opt/kmradar
 EnvironmentFile=/etc/kmradar.env
 Environment=TZ=Europe/Moscow
-ExecStart=/usr/bin/python3 -m kmradar web --db /var/lib/kmradar/radar.db --host 127.0.0.1 --port 8080
+ExecStart=/usr/bin/python3 -m kmradar web --db /var/lib/kmradar/radar.db --host 127.0.0.1 --port ${RADAR_PORT}
 Restart=always
 RestartSec=5
 NoNewPrivileges=true

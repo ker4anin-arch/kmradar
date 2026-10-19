@@ -130,6 +130,9 @@ def cmd_checko_test(args: argparse.Namespace) -> None:
 
 def cmd_checko_plan(args: argparse.Namespace) -> None:
     from .checko import CheckoSource, daily_requests
+    if not Path(args.territory).is_file():
+        print(f"Файла {args.territory} нет. Создайте его: ИНН компаний территории, по одному в строке.")
+        sys.exit(1)
     n = len(CheckoSource.read_territory(args.territory))
     plan = daily_requests(n)
     print(f"Компаний в территории: {n}")

@@ -214,6 +214,14 @@ def cmd_link(args: argparse.Namespace) -> None:
     print("Старые ссылки этих КМ больше не работают.", file=sys.stderr)
 
 
+def cmd_admin_link(args: argparse.Namespace) -> None:
+    db = Storage(args.db)
+    token = db.new_link(Storage.ADMIN)
+    print(f"{args.base_url.rstrip('/')}/a/{token}")
+    print("Ссылка аналитика для формы «Добавить повод». Старая админ-ссылка больше не работает.",
+          file=sys.stderr)
+
+
 def cmd_web(args: argparse.Namespace) -> None:  # pragma: no cover
     from .web import serve
     serve(args.db, args.host, args.port)
@@ -292,6 +300,11 @@ def main(argv: list[str] | None = None) -> None:
     s.add_argument("--base-url", required=True, help="например https://radar.example.ru")
     s.add_argument("km", help="km_id или all")
     s.set_defaults(fn=cmd_link)
+
+    s = sub.add_parser("admin-link", help="ссылка аналитика на форму «Добавить повод»")
+    s.add_argument("--db", default="radar.db")
+    s.add_argument("--base-url", required=True)
+    s.set_defaults(fn=cmd_admin_link)
 
     s = sub.add_parser("web", help="веб-версия дайджеста")
     s.add_argument("--db", default="radar.db")

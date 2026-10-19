@@ -22,6 +22,7 @@ from .storage import Storage
 
 MAX_BODY = 10_000
 TOKEN_RE = re.compile(r"^/k/([A-Za-z0-9_-]{16,64})(/[a-z]+)?$")
+ADMIN_RE = re.compile(r"^/a/([A-Za-z0-9_-]{16,64})(/event)?$")
 SECURITY_HEADERS = {
     "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; "
                                "base-uri 'none'; frame-ancestors 'none'",
@@ -123,8 +124,10 @@ def page(title: str, body: str) -> str:
 class App:
     def __init__(self, db_path: str, today: Callable[[], date] = date.today,
                  now: Callable[[], datetime] = datetime.now,
-                 refresher: Callable[[str, list[str]], None] | None = None):
+                 refresher: Callable[[str, list[str]], None] | None = None,
+                 lookup: Callable[[str], dict | None] | None = None):
         self.refresher = refresher   # фоновая загрузка «Моих компаний» из Checko
+        self.lookup = lookup         # карточка компании из Checko для админ-формы
         self.db_path = db_path
         self.today = today
         self.now = now
@@ -139,6 +142,9 @@ class App:
                                       "<p class='muted'>Дайджест открывается по личной ссылке вида "
                                       "/k/…, её выдаёт администратор радара.</p>"),
                             {"Content-Type": "text/html; charset=utf-8"})
+        a = ADMIN_RE.match(url.path)
+        if a:
+            return self.admin(method, a.group(1), bool(a.group(2)), url.query, body)
         m = TOKEN_RE.match(url.path)
         if not m:
             return self.not_found()
@@ -154,6 +160,26 @@ class App:
             if method == "POST" and action in ("/fb", "/out", "/reason", "/watch", "/unwatch"):
                 form = {k: v[0] for k, v in parse_qs(body.decode("utf-8", "replace")).items()}
                 return self.post(db, km, token, action, form)
+            return Response(405, "Метод не поддерживается", {"Content-Type": "text/plain; charset=utf-8"})
+        finally:
+            db.close()
+
+    def admin(self, method: str, token: str, is_post: bool, query: str, body: bytes) -> Response:
+        from .admin import ADMIN_CSS, add_event, page_body
+        db = Storage(self.db_path)
+        try:
+            if not db.is_admin_token(token):
+                return self.not_found()
+            if method == "POST" and is_post:
+                form = parse_qs(body.decode("utf-8", "replace"))
+                flat = {k: v[0] for k, v in form.items()}
+                msg = add_event(db, flat, form.get("km", []), self.today(), self.now(), self.lookup)
+                return Response(303, "", {"Location": f"/a/{token}?msg={quote(msg)}"})
+            if method == "GET" and not is_post:
+                msg = parse_qs(query).get("msg", [""])[0][:500]
+                body_html = f"<style>{ADMIN_CSS}</style>" + page_body(db, token, msg, self.today())
+                return Response(200, page("Радар · добавить повод", body_html),
+                                {"Content-Type": "text/html; charset=utf-8"})
             return Response(405, "Метод не поддерживается", {"Content-Type": "text/plain; charset=utf-8"})
         finally:
             db.close()
@@ -384,7 +410,7 @@ def make_handler(app: App) -> type[BaseHTTPRequestHandler]:  # pragma: no cover 
         def log_message(self, fmt: str, *args) -> None:
             # токен КМ в журнал не пишем
             msg = fmt % args
-            print(re.sub(r"/k/[A-Za-z0-9_-]+", "/k/***", msg), flush=True)
+            print(re.sub(r"/([ka])/[A-Za-z0-9_-]+", r"/\1/***", msg), flush=True)
 
     return Handler
 
@@ -400,6 +426,16 @@ def serve(db_path: str, host: str = "127.0.0.1", port: int = 8080) -> None:  # p
         cache = Path(db_path).resolve().parent / "checko-cache"
         refresher = Refresher(db_path, lambda: CheckoSource(
             CheckoClient(os.environ["CHECKO_API_KEY"]), [], cache, history_days=HISTORY_DAYS))
-    server = ThreadingHTTPServer((host, port), make_handler(App(db_path, refresher=refresher)))
+    lookup = None
+    if os.environ.get("CHECKO_API_KEY"):
+        from .checko import CheckoClient, CheckoError, map_company
+
+        def lookup(inn: str) -> dict | None:
+            try:
+                resp = CheckoClient(os.environ["CHECKO_API_KEY"]).get("company", inn=inn)
+            except CheckoError:
+                return None
+            return map_company(resp) if (resp.get("data") or {}).get("ИНН") else None
+    server = ThreadingHTTPServer((host, port), make_handler(App(db_path, refresher=refresher, lookup=lookup)))
     print(f"kmradar web: http://{host}:{port}", flush=True)
     server.serve_forever()

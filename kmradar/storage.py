@@ -159,6 +159,17 @@ class Storage:
                                 (self._hash(token),)).fetchone()
         return self.km(row["km_id"]) if row else None
 
+    ADMIN = "__admin__"
+
+    def is_admin_token(self, token: str) -> bool:
+        row = self.conn.execute("SELECT km_id FROM km_link WHERE token_hash = ?",
+                                (self._hash(token),)).fetchone()
+        return bool(row) and row["km_id"] == self.ADMIN
+
+    def manual_events(self, limit: int = 15) -> list[Event]:
+        return [self._event(r) for r in self.conn.execute(
+            "SELECT * FROM event WHERE facts LIKE '%\"manual\": true%' ORDER BY id DESC LIMIT ?", (limit,))]
+
     # --- «Мои компании»: холодные компании, которые КМ добавил сам ----------
     def add_watch(self, km_id: str, inns: list[str], limit: int, at: datetime) -> list[str]:
         have = set(self.watch_list(km_id))

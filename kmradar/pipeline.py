@@ -40,7 +40,10 @@ def collect(db: Storage, source: Source, day: date) -> int:
 
 
 def make_digests(db: Storage, day: date, delivery: Delivery | None = None,
-                 writer: TextWriter | None = None, km_ids: set[str] | None = None) -> dict[str, Digest]:
+                 writer: TextWriter | None = None, km_ids: set[str] | None = None,
+                 skip_weak: bool = True) -> dict[str, Digest]:
+    """skip_weak=False — не применять правило «слабый день два раза подряд»
+    (поводы, которые аналитик внёс руками, уходят КМ всегда)."""
     """Шаги 4–7: скоринг, лимиты, карточки, доставка по каждому КМ."""
     writer = writer or TemplateWriter()
     companies = db.companies()
@@ -66,7 +69,7 @@ def make_digests(db: Storage, day: date, delivery: Delivery | None = None,
             stop_events=stops,
             recent_card_inns=db.recent_card_inns(
                 km.km_id, day - timedelta(days=LIMITS.company_cooldown_days - 1)),
-            yesterday_strong=db.strong_count(km.km_id, day - timedelta(days=1)),
+            yesterday_strong=(db.strong_count(km.km_id, day - timedelta(days=1)) if skip_weak else None),
         )
         for card in digest.cards:
             card.text = render(card, companies[card.inn], km, writer)

@@ -34,7 +34,7 @@ MSP_RANK = {"none": 0, "micro": 1, "small": 2, "medium": 3}
 MSP_TITLE = {"micro": "микро", "small": "малое", "medium": "среднее", "none": "не МСП"}
 
 
-def _parse_date(value: str | None, default: date) -> date:
+def _parse_date(value: str | None, default: date | None) -> date | None:
     if not value:
         return default
     try:
@@ -45,9 +45,10 @@ def _parse_date(value: str | None, default: date) -> date:
 
 def diff_snapshots(prev: dict[str, Any] | None, curr: dict[str, Any], today: date,
                    cfg: DiffConfig = DIFF) -> list[Event]:
-    """Первый снимок — база, событий не даёт."""
+    """Первый снимок — база: событий из сравнения нет, но поднимаются свежие
+    датированные события из самого снимка (см. bootstrap_events)."""
     if prev is None:
-        return []
+        return bootstrap_events(curr, today)
     inn = curr["inn"]
     events: list[Event] = []
 
@@ -138,6 +139,53 @@ def diff_snapshots(prev: dict[str, Any] | None, curr: dict[str, Any], today: dat
     if enf_new >= cfg.enforcement_stop_amount > enf_old:
         add("stop", {"reason": "крупные исполнительные производства",
                      "amount": enf_new}, "ФССП")
+    return events
+
+
+def bootstrap_events(state: dict[str, Any], today: date) -> list[Event]:
+    """События из первого снимка компании — только то, у чего в данных есть дата
+    и она попадает в окно сигнала. Так радар показывает свежие поводы с первого
+    дня, а не через неделю. Снимки без дат (файлы аналитика) событий не дают."""
+    from .config import SIGNALS
+    inn = state["inn"]
+    events: list[Event] = []
+
+    def fresh(value: Any, kind: str) -> date | None:
+        d = _parse_date(value, None) if isinstance(value, str) else None
+        if d and 0 <= (today - d).days < SIGNALS[kind].window_days:
+            return d
+        return None
+
+    director = state.get("director") or {}
+    when = fresh(director.get("since"), "director_change")
+    if when and director.get("name"):
+        events.append(Event(inn, "director_change", when,
+                            {"new": director["name"],
+                             "position": director.get("position") or "руководитель"}, "ЕГРЮЛ"))
+
+    new_founders = [(fresh(f.get("since"), "founder_change"), f["name"])
+                    for f in state.get("founders", []) if f.get("name")]
+    new_founders = [(d, n) for d, n in new_founders if d]
+    if new_founders:
+        events.append(Event(inn, "founder_change", max(d for d, _ in new_founders),
+                            {"added": sorted(n for _, n in new_founders)}, "ЕГРЮЛ"))
+
+    for key, label in (("leasing", "лизинг"), ("pledges", "залог")):
+        for item in state.get(key, []):
+            when = fresh(item.get("date"), "leasing")
+            if when:
+                events.append(Event(inn, "leasing", when, {"kind": label, "subject": item.get("subject"),
+                                                           "counterparty": item.get("counterparty")},
+                                    "Федресурс", item.get("url")))
+
+    for msg in state.get("bankruptcy_messages", []):
+        when = fresh(msg.get("date"), "stop")
+        if when:
+            events.append(Event(inn, "stop", when, {"reason": msg.get("kind", "сообщение о банкротстве")},
+                                "Федресурс", msg.get("url")))
+    if state.get("status") in ("liquidating", "bankrupt"):
+        events.append(Event(inn, "stop", today, {
+            "reason": "ликвидация" if state["status"] == "liquidating" else "банкротство"}, "ЕГРЮЛ"))
     return events
 
 

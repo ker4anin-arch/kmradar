@@ -74,6 +74,9 @@ def describe(event: Event) -> str:
             line += f" ({f['counterparty']})"
         return line + "."
     if t == "director_change":
+        if not f.get("old"):
+            return (f"Новый руководитель ({f.get('position', 'руководитель')}): "
+                    f"{f['new']}, запись в ЕГРЮЛ от {when}.")
         return (f"Сменился руководитель ({f.get('position', 'руководитель')}): "
                 f"{f['old']} → {f['new']}, запись от {when}.")
     if t == "founder_change":

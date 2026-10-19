@@ -94,7 +94,8 @@ def map_company(company: dict, *, fedresurs: dict | None = None, finances: dict 
     director: dict[str, Any] = {}
     heads = c.get("Руковод") or []
     if heads:
-        director = {"name": _name(heads[0]), "position": (heads[0].get("НаимДолжн") or "").capitalize()}
+        director = {"name": _name(heads[0]), "position": (heads[0].get("НаимДолжн") or "").capitalize(),
+                    "since": heads[0].get("ДатаЗаписи")}
     elif c.get("УпрОрг"):
         director = {"name": _name(c["УпрОрг"]), "position": "Управляющая организация"}
 
@@ -102,7 +103,8 @@ def map_company(company: dict, *, fedresurs: dict | None = None, finances: dict 
     for group in (c.get("Учред") or {}).values():
         for f in group or []:
             share = (f.get("Доля") or {}).get("Процент") if isinstance(f, dict) else None
-            founders.append({"name": _name(f), "share": share})
+            founders.append({"name": _name(f), "share": share,
+                             "since": f.get("ДатаЗаписи") if isinstance(f, dict) else None})
 
     subdiv = c.get("Подразд") or {}
     branches = []

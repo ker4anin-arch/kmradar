@@ -53,7 +53,8 @@ def test_map_company_fields():
     s = map_company(COMPANY, finances=FINANCES, today=DAY)
     assert s["inn"] == "1424008710" and s["region"] == "14"
     assert s["okved_main"] == "35.30.14" and s["okved_extra"] == ["35.30.3"]
-    assert s["director"] == {"name": "Яковлев Игнат Романович", "position": "Генеральный директор"}
+    assert s["director"] == {"name": "Яковлев Игнат Романович", "position": "Генеральный директор",
+                             "since": "2015-02-16"}
     assert [f["name"] for f in s["founders"]] == ["Яковлев Владимир Иванович"]
     assert s["capital"] == 10000 and s["msp_category"] == "micro" and s["status"] == "active"
     assert s["revenue"] == {"2024": 35228000, "2025": 29702000}
@@ -201,3 +202,28 @@ def test_real_shapes_round_trip_through_diff():
     ev = diff_snapshots(prev, curr, DAY)
     assert [e.type for e in ev] == ["revenue_growth"] and ev[0].facts["growth_pct"] == 50
     json.dumps(curr, ensure_ascii=False)  # снимок сериализуется
+
+
+def test_first_snapshot_raises_fresh_dated_events():
+    from kmradar.cards import describe
+    c = copy.deepcopy(COMPANY)
+    c["data"]["Руковод"][0]["ДатаЗаписи"] = "2026-10-05"                       # свежий директор
+    c["data"]["Учред"]["ФЛ"][0]["ДатаЗаписи"] = "2019-02-13"                   # старый учредитель
+    c["data"]["Учред"]["РосОрг"] = [{"НаимСокр": 'ООО "ИНВЕСТ"', "ДатаЗаписи": "2026-10-10"}]
+    f = fed(rec("L1", "FinancialLeaseContract", "2026-10-14", "1027700000001"),
+            rec("L0", "FinancialLeaseContract", "2026-09-01", "1027700000001"))   # за окном 30 дней
+    ev = diff_snapshots(None, map_company(c, fedresurs=f, today=DAY), DAY)
+    kinds = {e.type: e for e in ev}
+    assert sorted(kinds) == ["director_change", "founder_change", "leasing"]
+    assert kinds["founder_change"].facts == {"added": ['ООО "ИНВЕСТ"']}
+    assert describe(kinds["director_change"]) == (
+        "Новый руководитель (Генеральный директор): Яковлев Игнат Романович, запись в ЕГРЮЛ от 05.10.2026.")
+    # компания без свежих дат: первый снимок ничего не даёт
+    assert diff_snapshots(None, map_company(COMPANY, today=DAY), DAY) == []
+
+
+def test_first_snapshot_of_liquidating_company_is_stopped():
+    c = copy.deepcopy(COMPANY)
+    c["data"]["Статус"] = {"Код": "101", "Наим": "В стадии ликвидации"}
+    ev = diff_snapshots(None, map_company(c, today=DAY), DAY)
+    assert [(e.type, e.event_date) for e in ev] == [("stop", DAY)]

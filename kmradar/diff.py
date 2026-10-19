@@ -129,8 +129,8 @@ def diff_snapshots(prev: dict[str, Any] | None, curr: dict[str, Any], today: dat
     # 8. Стоп-сигналы
     status_old, status_new = prev.get("status", "active"), curr.get("status", "active")
     if status_new != status_old and status_new in ("liquidating", "bankrupt"):
-        add("stop", {"reason": "ликвидация" if status_new == "liquidating" else "банкротство"},
-            "ЕГРЮЛ")
+        add("stop", {"reason": "ликвидация" if status_new == "liquidating" else "банкротство",
+                     "status": "changed"}, "ЕГРЮЛ")
     seen = {m["id"] for m in prev.get("bankruptcy_messages", [])}
     for msg in curr.get("bankruptcy_messages", []):
         if msg["id"] not in seen:
@@ -215,7 +215,8 @@ def bootstrap_events(state: dict[str, Any], today: date, history_days: int = 0) 
 
     if state.get("status") in ("liquidating", "bankrupt"):
         events.append(Event(inn, "stop", today, {
-            "reason": "ликвидация" if state["status"] == "liquidating" else "банкротство"}, "ЕГРЮЛ"))
+            "reason": "ликвидация" if state["status"] == "liquidating" else "банкротство",
+            "status": "current"}, "ЕГРЮЛ"))
     return events
 
 

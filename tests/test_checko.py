@@ -197,8 +197,8 @@ def test_daily_request_plan():
     paid = daily_requests(100, PLANS["paid"])
     assert paid["per_company"] == pytest.approx(4.32, abs=0.01) and paid["max_companies"] is None
     free = daily_requests(50, PLANS["free"])
-    assert free["per_company"] == pytest.approx(1.55, abs=0.01)
-    assert free["max_companies"] == 62 and free["first_day"] == 300
+    assert free["per_company"] == pytest.approx(1.70, abs=0.01)
+    assert free["max_companies"] == 57 and free["first_day"] == 350
 
 
 def test_free_plan_stops_before_daily_limit(tmp_path):
@@ -327,3 +327,12 @@ def test_old_creditor_stops_are_migrated(tmp_path):
     db.close()
     assert ("3", "stop") in {(e.inn, e.type) for e in Storage(path).events_since(DAY)}
     assert sqlite3.connect(path).execute("PRAGMA user_version").fetchone()[0] == 1
+
+
+def test_status_stop_wording():
+    from kmradar.cards import describe
+    from kmradar.models import Event
+    now = Event("1", "stop", DAY, {"reason": "ликвидация", "status": "current"}, "ЕГРЮЛ")
+    changed = Event("1", "stop", DAY, {"reason": "ликвидация", "status": "changed"}, "ЕГРЮЛ")
+    assert describe(now) == "Статус в ЕГРЮЛ: ликвидация (на 20.10.2026)."
+    assert describe(changed) == "Статус в ЕГРЮЛ сменился: ликвидация (замечено 20.10.2026)."

@@ -26,10 +26,10 @@ import os
 # Тарифы: как часто обновлять каждый вид данных (дней) и какие законы о закупках смотреть.
 # Порядок ключей — приоритет: при нехватке лимита первыми идут самые важные данные.
 PLANS = {
-    # бесплатный ключ: 100 запросов в день, ~1,5 запроса на компанию → ~60 компаний
+    # бесплатный ключ: 100 запросов в день, ~1,7 запроса на компанию → ~55 компаний
     "free": {"cadence": {"fedresurs": 1, "company": 3, "contracts": 7, "enforcements": 30,
                          "bankruptcy-messages": 30, "finances": 90},
-             "laws": ("44",), "daily_limit": 100},
+             "laws": ("44", "223"), "daily_limit": 100},
     "paid": {"cadence": {"company": 1, "fedresurs": 1, "contracts": 1, "enforcements": 7,
                          "bankruptcy-messages": 7, "finances": 30},
              "laws": ("44", "223"), "daily_limit": 0},

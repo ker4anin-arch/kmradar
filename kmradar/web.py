@@ -299,6 +299,9 @@ class App:
             title = esc(c.name) if c else f"ИНН {inn}"
             meta = (f"ИНН {inn} · регион {esc(c.region)} · ОКВЭД {esc(c.okved)}" if c
                     else "данные загружаются — обновите страницу через минуту (или придут утром, если исчерпан лимит Checko)")
+            profile = self.profile_line(db, inn) if c else ""
+            if profile:
+                meta += f"<br>{profile}"
             lines = "".join(f"<li>{linkify(describe(e))}</li>" for e in events[:8]) if events else (
                 "<li class='muted'>За полгода событий нет.</li>" if c else "")
             out.append(
@@ -309,6 +312,32 @@ class App:
                 f'<button type="submit" class="small">Убрать</button></form></div>'
                 + (f'<ul class="hist">{lines}</ul>' if lines else "") + '</div>')
         return "".join(out)
+
+    def profile_line(self, db: Storage, inn: str) -> str:
+        """Короткая справка из последнего снимка: чтобы пустая история не выглядела поломкой."""
+        from .cards import money
+        from .diff import MSP_TITLE
+        s = db.last_snapshot(inn, self.today() + timedelta(days=1))
+        if not s:
+            return ""
+        bits = []
+        rev = s.get("revenue") or {}
+        if rev:
+            year = max(rev, key=int)
+            bits.append(f"выручка {year}: {money(rev[year])}")
+        d = s.get("director") or {}
+        if d.get("name"):
+            since = d.get("since")
+            since_txt = f" с {since[8:10]}.{since[5:7]}.{since[:4]}" if since and len(since) >= 10 else ""
+            bits.append(f"руководитель {esc(d['name'])}{since_txt}")
+        if s.get("msp_category") and s["msp_category"] != "none":
+            bits.append(f"МСП: {MSP_TITLE.get(s['msp_category'], s['msp_category'])}")
+        names = {"company": "ЕГРЮЛ", "fedresurs": "Федресурс", "finances": "отчётность",
+                 "enforcements": "ФССП", "bankruptcy-messages": "ЕФРСБ"}
+        checked = [names[x] for x in s.get("_sources", []) if x in names]
+        if checked:
+            bits.append("проверено: " + ", ".join(checked) + ", госконтракты")
+        return " · ".join(bits)
 
     def card_html(self, r, token: str, day: date) -> str:
         c = parse_card(r["text"])

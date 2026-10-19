@@ -109,6 +109,10 @@ def describe(event: Event) -> str:
         return f"Новость ({f.get('source', 'СМИ')}, {when}): «{f.get('title', '')}»."
     if t == "risk":
         return f"{f.get('reason', 'намерение кредитора о банкротстве').capitalize()} ({when})."
+    if t == "stop" and f.get("status") == "current":
+        return f"Статус в ЕГРЮЛ: {f.get('reason', 'ликвидация')} (на {when})."
+    if t == "stop" and f.get("status") == "changed":
+        return f"Статус в ЕГРЮЛ сменился: {f.get('reason', 'ликвидация')} (замечено {when})."
     if t == "stop":
         line = f"{f.get('reason', 'стоп-сигнал').capitalize()} ({when})"
         if f.get("amount"):

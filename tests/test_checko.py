@@ -311,8 +311,10 @@ def test_enforcement_threshold_scales_with_revenue():
 
 def test_old_creditor_stops_are_migrated(tmp_path):
     from kmradar.models import Event
+    import sqlite3
     path = str(tmp_path / "r.db")
     db = Storage(path)
+    db.conn.execute("PRAGMA user_version = 0")       # как будто база создана старой версией
     db.save_events([Event("1", "stop", DAY, {"reason": "намерение кредитора обратиться в суд"}, "Федресурс"),
                     Event("2", "stop", DAY, {"reason": "банкротство"}, "ЕГРЮЛ")], DAY)
     db.save_caution("km", DAY, "⚠️ Осторожно: ООО — Намерение кредитора обратиться в суд (20.10.2026).")
@@ -320,3 +322,8 @@ def test_old_creditor_stops_are_migrated(tmp_path):
     db = Storage(path)
     assert sorted((e.inn, e.type) for e in db.events_since(DAY)) == [("1", "risk"), ("2", "stop")]
     assert db.cautions("km", DAY) == []
+    # второй раз миграция не запускается: новые стоп-сигналы аналитика не трогаем
+    db.save_events([Event("3", "stop", DAY, {"reason": "намерение кредитора"}, "Федресурс")], DAY)
+    db.close()
+    assert ("3", "stop") in {(e.inn, e.type) for e in Storage(path).events_since(DAY)}
+    assert sqlite3.connect(path).execute("PRAGMA user_version").fetchone()[0] == 1

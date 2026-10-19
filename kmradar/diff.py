@@ -146,7 +146,7 @@ def diff_snapshots(prev: dict[str, Any] | None, curr: dict[str, Any], today: dat
     return events
 
 
-def bootstrap_events(state: dict[str, Any], today: date) -> list[Event]:
+def bootstrap_events(state: dict[str, Any], today: date, history_days: int = 0) -> list[Event]:
     """События из первого снимка компании — только то, у чего в данных есть дата
     и она попадает в окно сигнала. Так радар показывает свежие поводы с первого
     дня, а не через неделю. Снимки без дат (файлы аналитика) событий не дают."""
@@ -156,7 +156,7 @@ def bootstrap_events(state: dict[str, Any], today: date) -> list[Event]:
 
     def fresh(value: Any, kind: str) -> date | None:
         d = _parse_date(value, None) if isinstance(value, str) else None
-        if d and 0 <= (today - d).days < SIGNALS[kind].window_days:
+        if d and 0 <= (today - d).days < max(SIGNALS[kind].window_days, history_days):
             return d
         return None
 
@@ -187,6 +187,18 @@ def bootstrap_events(state: dict[str, Any], today: date) -> list[Event]:
         if when:
             events.append(Event(inn, "stop", when, {"reason": msg.get("kind", "сообщение о банкротстве")},
                                 "Федресурс", msg.get("url")))
+    # отчётность: последний год с ростом > порога; дата — срок сдачи (31 марта следующего года)
+    revenue = state.get("revenue") or {}
+    if revenue:
+        year = max(revenue, key=int)
+        last, before = revenue.get(year), revenue.get(str(int(year) - 1))
+        if last and before and before > 0 and (last - before) / before * 100 > DIFF.revenue_growth_pct:
+            when = fresh(f"{int(year) + 1}-03-31", "revenue_growth")
+            if when:
+                events.append(Event(inn, "revenue_growth", when, {
+                    "year": int(year), "revenue": last, "revenue_prev": before,
+                    "growth_pct": round((last - before) / before * 100)}, "ГИР БО"))
+
     if state.get("status") in ("liquidating", "bankrupt"):
         events.append(Event(inn, "stop", today, {
             "reason": "ликвидация" if state["status"] == "liquidating" else "банкротство"}, "ЕГРЮЛ"))

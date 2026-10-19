@@ -40,14 +40,18 @@ def collect(db: Storage, source: Source, day: date) -> int:
 
 
 def make_digests(db: Storage, day: date, delivery: Delivery | None = None,
-                 writer: TextWriter | None = None) -> dict[str, Digest]:
+                 writer: TextWriter | None = None, km_ids: set[str] | None = None) -> dict[str, Digest]:
     """Шаги 4–7: скоринг, лимиты, карточки, доставка по каждому КМ."""
     writer = writer or TemplateWriter()
     companies = db.companies()
     stops_all = db.events_since(day - timedelta(days=LIMITS.stop_memory_days), stop=True)
     result = {}
     for km in db.kms():
+        if km_ids is not None and km.km_id not in km_ids:
+            continue
+        # территория по профилю + компании, которые КМ добавил сам (они фильтр профиля не проходят)
         territory = {inn for inn, c in companies.items() if km.matches(c)}
+        territory |= set(db.watch_list(km.km_id)) & set(companies)
         # события, которые этот КМ ещё не видел в карточках
         unseen = db.events_since(day - timedelta(days=MAX_WINDOW), stop=False,
                                  not_in_cards_of=km.km_id)

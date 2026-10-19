@@ -77,6 +77,12 @@ CREATE TABLE IF NOT EXISTS km_weight (
     value REAL NOT NULL,
     PRIMARY KEY (km_id, type)
 );
+CREATE TABLE IF NOT EXISTS km_watch (
+    km_id TEXT NOT NULL,
+    inn TEXT NOT NULL,
+    added TEXT NOT NULL,
+    PRIMARY KEY (km_id, inn)
+);
 CREATE TABLE IF NOT EXISTS km_link (
     token_hash TEXT PRIMARY KEY,
     km_id TEXT NOT NULL,
@@ -140,6 +146,39 @@ class Storage:
         row = self.conn.execute("SELECT km_id FROM km_link WHERE token_hash = ?",
                                 (self._hash(token),)).fetchone()
         return self.km(row["km_id"]) if row else None
+
+    # --- «Мои компании»: холодные компании, которые КМ добавил сам ----------
+    def add_watch(self, km_id: str, inns: list[str], limit: int, at: datetime) -> list[str]:
+        have = set(self.watch_list(km_id))
+        added = []
+        for inn in inns:
+            if inn in have or len(have) >= limit:
+                continue
+            self.conn.execute("INSERT OR IGNORE INTO km_watch VALUES (?, ?, ?)",
+                              (km_id, inn, at.isoformat(timespec="seconds")))
+            have.add(inn)
+            added.append(inn)
+        self.conn.commit()
+        return added
+
+    def remove_watch(self, km_id: str, inn: str) -> None:
+        self.conn.execute("DELETE FROM km_watch WHERE km_id = ? AND inn = ?", (km_id, inn))
+        self.conn.commit()
+
+    def watch_list(self, km_id: str) -> list[str]:
+        return [r["inn"] for r in self.conn.execute(
+            "SELECT inn FROM km_watch WHERE km_id = ? ORDER BY added", (km_id,))]
+
+    def all_watched(self) -> list[str]:
+        return [r["inn"] for r in self.conn.execute("SELECT DISTINCT inn FROM km_watch ORDER BY inn")]
+
+    def company_events(self, inn: str, since: date) -> list[Event]:
+        return [self._event(r) for r in self.conn.execute(
+            "SELECT * FROM event WHERE inn = ? AND event_date >= ? ORDER BY event_date DESC, id DESC",
+            (inn, since.isoformat()))]
+
+    def has_snapshot(self, inn: str) -> bool:
+        return self.conn.execute("SELECT 1 FROM snapshot WHERE inn = ? LIMIT 1", (inn,)).fetchone() is not None
 
     # --- что показать на странице КМ ----------------------------------------
     def save_caution(self, km_id: str, day: date, text: str) -> None:

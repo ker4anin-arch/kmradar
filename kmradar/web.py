@@ -9,7 +9,7 @@ from __future__ import annotations
 import html
 import re
 from dataclasses import dataclass, field
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Callable
 from urllib.parse import parse_qs, quote, urlsplit
@@ -105,6 +105,10 @@ button[aria-pressed=true]{background:var(--accent);border-color:var(--accent);co
 button:focus-visible,a:focus-visible,textarea:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .row{display:flex;flex-wrap:wrap;gap:6px}
 textarea{width:100%;min-height:70px;font:inherit;padding:8px;border-radius:9px;border:1px solid var(--line);background:var(--bg);color:var(--ink)}
+.hist{margin:0;padding-left:18px;font-size:14px;display:grid;gap:4px}
+.hist a{color:var(--accent)}
+button.small{padding:6px 10px;font-size:13px}
+h2 .muted{font-weight:400;font-size:14px}
 .flash{background:var(--good-soft);color:var(--good);border-radius:10px;padding:8px 12px;font-size:14px}
 """
 
@@ -118,7 +122,9 @@ def page(title: str, body: str) -> str:
 
 class App:
     def __init__(self, db_path: str, today: Callable[[], date] = date.today,
-                 now: Callable[[], datetime] = datetime.now):
+                 now: Callable[[], datetime] = datetime.now,
+                 refresher: Callable[[str, list[str]], None] | None = None):
+        self.refresher = refresher   # фоновая загрузка «Моих компаний» из Checko
         self.db_path = db_path
         self.today = today
         self.now = now
@@ -145,7 +151,7 @@ class App:
             query = {k: v[0] for k, v in parse_qs(url.query).items()}
             if method == "GET" and action == "":
                 return self.digest(db, km, token, query)
-            if method == "POST" and action in ("/fb", "/out", "/reason"):
+            if method == "POST" and action in ("/fb", "/out", "/reason", "/watch", "/unwatch"):
                 form = {k: v[0] for k, v in parse_qs(body.decode("utf-8", "replace")).items()}
                 return self.post(db, km, token, action, form)
             return Response(405, "Метод не поддерживается", {"Content-Type": "text/plain; charset=utf-8"})
@@ -165,6 +171,20 @@ class App:
 
     def post(self, db: Storage, km: KMProfile, token: str, action: str, form: dict) -> Response:
         day = form.get("day") if re.fullmatch(r"\d{4}-\d{2}-\d{2}", form.get("day", "")) else None
+        if action == "/watch":
+            from .watch import WATCH_LIMIT, parse_inns
+            inns, bad = parse_inns(form.get("inns", "")[:2000])
+            added = db.add_watch(km.km_id, inns, WATCH_LIMIT, self.now())
+            if added and self.refresher:
+                self.refresher(km.km_id, added)
+            skipped = len(inns) - len(added)
+            return self.redirect(token, day, "my", msg="watch", added=str(len(added)),
+                                 bad=str(len(bad)), full=str(skipped) if skipped else "")
+        if action == "/unwatch":
+            inn = form.get("inn", "")
+            if re.fullmatch(r"\d{10}", inn):
+                db.remove_watch(km.km_id, inn)
+            return self.redirect(token, day, "my")
         if action == "/reason":
             type_, text = form.get("type", ""), form.get("text", "").strip()[:1000]
             if type_ in SIGNALS and text:
@@ -207,6 +227,15 @@ class App:
             parts.append('<p class="flash">Итог записан. Спасибо!</p>')
         if query.get("msg") == "reason":
             parts.append('<p class="flash">Причина записана, учтём в настройке радара.</p>')
+        if query.get("msg") == "watch":
+            note = f"Добавлено компаний: {esc(query.get('added', '0'))}."
+            if query.get("added", "0") != "0":
+                note += " Данные подтягиваются — обновите страницу через минуту."
+            if query.get("bad", "0") != "0":
+                note += f" Не похоже на ИНН юрлица: {esc(query['bad'])}."
+            if query.get("full"):
+                note += " Часть не добавлена: уже в списке или достигнут лимит."
+            parts.append(f'<p class="flash">{note}</p>')
 
         ask = query.get("ask")
         if ask in SIGNALS:
@@ -244,10 +273,42 @@ class App:
             parts.append('<p class="box muted">На этот день сильных поводов нет.</p>')
         for r in cards:
             parts.append(self.card_html(r, token, day))
+        parts.append(self.watch_html(db, km, token, day))
         parts.append('<p class="muted">Клиент это или нет — проверьте у себя в CRM. '
                      'Радар этого не знает и не должен знать.</p>')
         return Response(200, page(f"Радар · {ddmm(day)}", "".join(parts)),
                         {"Content-Type": "text/html; charset=utf-8"})
+
+    def watch_html(self, db: Storage, km: KMProfile, token: str, day: date) -> str:
+        from .cards import describe
+        from .watch import HISTORY_DAYS, WATCH_LIMIT
+        watched = db.watch_list(km.km_id)
+        companies = db.companies()
+        since = self.today() - timedelta(days=HISTORY_DAYS)
+        out = [f'<h2 id="my">Мои компании <span class="muted">{len(watched)} из {WATCH_LIMIT}</span></h2>',
+               f'<form class="box" method="post" action="/k/{token}/watch">'
+               f'<p class="caution"><b>Только компании, которые ещё не клиенты банка.</b> '
+               f'ИНН клиента сюда не вводите: это раскрывает факт обслуживания в банке.</p>'
+               f'<label for="inns" class="muted">ИНН компаний — через пробел, запятую или с новой строки</label>'
+               f'<textarea id="inns" name="inns" maxlength="2000" placeholder="например: 1424008710"></textarea>'
+               f'<input type="hidden" name="day" value="{day.isoformat()}">'
+               f'<div class="row"><button type="submit">Следить</button></div></form>']
+        for inn in watched:
+            c = companies.get(inn)
+            events = db.company_events(inn, since) if c else []
+            title = esc(c.name) if c else f"ИНН {inn}"
+            meta = (f"ИНН {inn} · регион {esc(c.region)} · ОКВЭД {esc(c.okved)}" if c
+                    else "данные загружаются — обновите страницу через минуту (или придут утром, если исчерпан лимит Checko)")
+            lines = "".join(f"<li>{linkify(describe(e))}</li>" for e in events[:8]) if events else (
+                "<li class='muted'>За полгода событий нет.</li>" if c else "")
+            out.append(
+                f'<div class="box"><div class="head"><div><div class="name">{title}</div>'
+                f'<div class="meta">{meta}</div></div>'
+                f'<form method="post" action="/k/{token}/unwatch"><input type="hidden" name="inn" value="{inn}">'
+                f'<input type="hidden" name="day" value="{day.isoformat()}">'
+                f'<button type="submit" class="small">Убрать</button></form></div>'
+                + (f'<ul class="hist">{lines}</ul>' if lines else "") + '</div>')
+        return "".join(out)
 
     def card_html(self, r, token: str, day: date) -> str:
         c = parse_card(r["text"])
@@ -300,7 +361,16 @@ def make_handler(app: App) -> type[BaseHTTPRequestHandler]:  # pragma: no cover 
 
 
 def serve(db_path: str, host: str = "127.0.0.1", port: int = 8080) -> None:  # pragma: no cover
+    import os
+    from pathlib import Path
     Storage(db_path).close()  # создать схему до первого запроса
-    server = ThreadingHTTPServer((host, port), make_handler(App(db_path)))
+    refresher = None
+    if os.environ.get("CHECKO_API_KEY"):
+        from .checko import CheckoClient, CheckoSource
+        from .watch import HISTORY_DAYS, Refresher
+        cache = Path(db_path).resolve().parent / "checko-cache"
+        refresher = Refresher(db_path, lambda: CheckoSource(
+            CheckoClient(os.environ["CHECKO_API_KEY"]), [], cache, history_days=HISTORY_DAYS))
+    server = ThreadingHTTPServer((host, port), make_handler(App(db_path, refresher=refresher)))
     print(f"kmradar web: http://{host}:{port}", flush=True)
     server.serve_forever()

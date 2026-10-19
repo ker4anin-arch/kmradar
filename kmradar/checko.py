@@ -104,11 +104,11 @@ def _records(resp: dict) -> list[dict]:
 
 def map_company(company: dict, *, fedresurs: dict | None = None, finances: dict | None = None,
                 enforcements: dict | None = None, bankruptcy: dict | None = None,
-                today: date | None = None) -> dict[str, Any]:
+                today: date | None = None, fresh_days: int = FRESH_DAYS) -> dict[str, Any]:
     """Ответы Checko → нормализованный снимок (формат в diff.py)."""
     c = company.get("data") or {}
     today = today or date.today()
-    fresh_from = (today - timedelta(days=FRESH_DAYS)).isoformat()
+    fresh_from = (today - timedelta(days=fresh_days)).isoformat()
     ogrn = str(c.get("ОГРН") or "")
 
     director: dict[str, Any] = {}
@@ -194,8 +194,9 @@ def map_company(company: dict, *, fedresurs: dict | None = None, finances: dict 
     return state
 
 
-def map_contracts(inn: str, resp: dict, law: str, today: date) -> list[dict[str, Any]]:
-    fresh_from = (today - timedelta(days=FRESH_DAYS)).isoformat()
+def map_contracts(inn: str, resp: dict, law: str, today: date,
+                  fresh_days: int = FRESH_DAYS) -> list[dict[str, Any]]:
+    fresh_from = (today - timedelta(days=fresh_days)).isoformat()
     out = []
     for r in _records(resp):
         when = str(r.get("Дата") or "")
@@ -216,8 +217,11 @@ class CheckoSource:
     """Источник для pipeline: территория — список ИНН (файл, по одному в строке)."""
 
     def __init__(self, client: CheckoClient, territory: list[str], cache_dir: str | Path,
-                 log: Callable[[str], None] = print, plan: dict | None = None):
+                 log: Callable[[str], None] = print, plan: dict | None = None,
+                 history_days: int = 0):
         self.plan = plan or plan_settings()
+        # >0 — режим истории: в снимок попадают сообщения и контракты за history_days дней
+        self.fresh_days = max(FRESH_DAYS, history_days)
         self.client = client
         self.territory = territory
         self.cache = Path(cache_dir)
@@ -276,12 +280,13 @@ class CheckoSource:
         state = map_company(
             company, fedresurs=parts["fedresurs"], finances=parts["finances"],
             enforcements=parts["enforcements"], bankruptcy=parts["bankruptcy-messages"], today=day,
+            fresh_days=self.fresh_days,
         )
         # какие данные реально есть: diff не сравнивает то, чего не было во вчерашнем снимке
         state["_sources"] = ["company"] + [ep for ep, resp in parts.items() if resp]
         wins = []
         for law, resp in contracts.items():
-            wins += map_contracts(inn, resp or {}, law, day)
+            wins += map_contracts(inn, resp or {}, law, day, self.fresh_days)
         return state, wins
 
     # --- протокол Source ----------------------------------------------------

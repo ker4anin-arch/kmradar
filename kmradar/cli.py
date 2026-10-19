@@ -80,7 +80,8 @@ def _checko(args: argparse.Namespace):
         client = CheckoClient(os.environ.get("CHECKO_API_KEY", ""))
     except CheckoError as exc:
         print(exc); sys.exit(1)
-    territory = CheckoSource.read_territory(args.territory) if getattr(args, "territory", None) else []
+    path = getattr(args, "territory", None)
+    territory = CheckoSource.read_territory(path) if path and Path(path).is_file() else []
     cache = args.cache or str(Path(args.db).resolve().parent / "checko-cache")
     return CheckoSource(client, territory, cache)
 
@@ -89,8 +90,12 @@ def cmd_run(args: argparse.Namespace) -> None:
     db = Storage(args.db)
     day = date.fromisoformat(args.date) if args.date else date.today()
     sources = []
-    if args.territory and Path(args.territory).is_file():
-        sources.append(_checko(args))
+    watched = db.all_watched()
+    if args.territory and (Path(args.territory).is_file() or watched):
+        src = _checko(args)
+        # территория из файла + «Мои компании» всех КМ
+        src.territory = list(dict.fromkeys(src.territory + watched))
+        sources.append(src)
     elif args.territory:
         print(f"Файла территории {args.territory} нет — Checko пропускаю.")
     if args.source:

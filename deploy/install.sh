@@ -19,6 +19,10 @@ fi
 # shellcheck disable=SC1091
 source /etc/kmradar.env
 
+if ss -ltn | grep -q '127.0.0.1:8080 \|0.0.0.0:8080 \|\*:8080 ' && ! systemctl is-active --quiet kmradar-web; then
+  echo "Порт 8080 занят другим приложением. Поменяйте --port в deploy/kmradar-web.service и порт в deploy/Caddyfile."
+  exit 1
+fi
 cp deploy/kmradar-web.service deploy/kmradar-daily.service deploy/kmradar-daily.timer \
    deploy/kmradar-bot.service /etc/systemd/system/
 systemctl daemon-reload
@@ -29,22 +33,29 @@ if [ -n "${TELEGRAM_TOKEN:-}" ]; then
   systemctl restart kmradar-bot.service
 fi
 
-# HTTPS через Caddy
-if ! command -v caddy >/dev/null; then
+# HTTPS через Caddy. Существующую настройку Caddy НЕ трогаем никогда.
+domain="${BASE_URL#https://}"; domain="${domain%%/*}"
+block="$(sed "s/radar.example.ru/$domain/" deploy/Caddyfile)"
+if [ -z "$domain" ] || [ "$domain" = "radar.example.ru" ]; then
+  echo "BASE_URL не задан — HTTPS не настроен."
+elif command -v caddy >/dev/null || command -v nginx >/dev/null; then
+  echo "На сервере уже есть веб-сервер — его настройку скрипт не меняет."
+  echo "Добавьте в свой Caddyfile этот блок и выполните: systemctl reload caddy"
+  echo "----------------------------------------"
+  echo "$block"
+  echo "----------------------------------------"
+else
   apt-get update -q
   apt-get install -y -q caddy || {
     echo "Пакета caddy нет в репозиториях этой системы."
     echo "Установите по инструкции https://caddyserver.com/docs/install#debian-ubuntu-raspbian и запустите скрипт ещё раз."
     exit 1
   }
-fi
-domain="${BASE_URL#https://}"; domain="${domain%%/*}"
-if [ -n "$domain" ] && [ "$domain" != "radar.example.ru" ]; then
-  sed "s/radar.example.ru/$domain/" deploy/Caddyfile > /etc/caddy/Caddyfile
+  # свежий Caddy из пакета: заменяем только его стандартную заглушку, с копией
+  [ -f /etc/caddy/Caddyfile ] && cp /etc/caddy/Caddyfile "/etc/caddy/Caddyfile.bak.$(date +%Y%m%d%H%M%S)"
+  echo "$block" > /etc/caddy/Caddyfile
   systemctl reload caddy || systemctl restart caddy
   echo "Сайт: https://$domain (домен должен указывать на IP этого сервера, порты 80 и 443 открыты)"
-else
-  echo "BASE_URL не задан — Caddy не настроен."
 fi
 
 cat <<MSG

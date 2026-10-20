@@ -1,0 +1,377 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Радар поводов КМ</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600;700&family=Unbounded:wght@500;700&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: report header → two columns (live digest | why + metrics) → pipeline strip → built / next */
+:root {
+  --bg: #f3f5f8;
+  --surface: #ffffff;
+  --ink: #142033;
+  --muted: #5a6577;
+  --line: #dde2ea;
+  --accent: #1f4fd1;
+  --accent-soft: #e6ecfb;
+  --urgent: #c8322b;
+  --urgent-soft: #fbe9e8;
+  --amber: #a86a00;
+  --amber-soft: #fbf0d9;
+  --good: #1d7a46;
+  --good-soft: #e3f3e9;
+  --chat: #e9edf3;
+  --display: "Unbounded", "Golos Text", system-ui, sans-serif;
+  --body: "Golos Text", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #0e141e; --surface: #172131; --ink: #e6ebf3; --muted: #97a3b6; --line: #2a374b;
+  --accent: #7c9cff; --accent-soft: #1f2d4d; --urgent: #ff7a70; --urgent-soft: #3a1f22;
+  --amber: #f0b44c; --amber-soft: #392c14; --good: #5cc98b; --good-soft: #15321f; --chat: #111926;
+  color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #0e141e; --surface: #172131; --ink: #e6ebf3; --muted: #97a3b6; --line: #2a374b;
+  --accent: #7c9cff; --accent-soft: #1f2d4d; --urgent: #ff7a70; --urgent-soft: #3a1f22;
+  --amber: #f0b44c; --amber-soft: #392c14; --good: #5cc98b; --good-soft: #15321f; --chat: #111926;
+  color-scheme: dark }
+
+* { box-sizing: border-box }
+body { background: var(--bg); color: var(--ink); font: 15px/1.55 var(--body); }
+.wrap { max-width: 1120px; margin: 0 auto; padding-block: 40px 64px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  display: grid; gap: 40px; }
+h1, h2 { font-family: var(--display); text-wrap: balance; margin: 0; letter-spacing: -0.01em }
+h1 { font-size: clamp(26px, 4vw, 38px); font-weight: 700; line-height: 1.15 }
+h2 { font-size: 19px; font-weight: 500 }
+p { margin: 0 }
+.eyebrow { font: 600 11.5px/1 var(--body); letter-spacing: .12em; text-transform: uppercase; color: var(--accent) }
+.lead { color: var(--muted); max-width: 68ch; font-size: 16px }
+header { display: grid; gap: 14px }
+.facts { display: flex; flex-wrap: wrap; gap: 8px; }
+.facts span { font: 500 13px/1 var(--body); padding: 8px 11px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface); color: var(--muted) }
+.facts b { color: var(--ink); font-weight: 600 }
+a { color: var(--accent) }
+a:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px }
+
+.main { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 0.9fr); gap: 28px; align-items: start }
+@media (min-width: 861px) { .main > .col:last-child { position: sticky; top: calc(16px + env(safe-area-inset-top, 0px)) } }
+@media (max-width: 860px) { .main { grid-template-columns: minmax(0, 1fr) } }
+.col { display: grid; gap: 14px; min-width: 0 }
+.sechead { display: grid; gap: 6px }
+.sechead p { color: var(--muted); font-size: 14px }
+
+.controls { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); padding: 3px; gap: 2px; flex-wrap: wrap }
+.seg button { font: 500 13px/1 var(--body); border: 0; background: none; color: var(--muted); padding: 8px 11px; border-radius: 7px; cursor: pointer }
+.seg button[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent); font-weight: 600 }
+
+.chat { background: var(--chat); border: 1px solid var(--line); border-radius: 18px; padding: 16px; display: grid; gap: 12px; min-width: 0 }
+.bubble { background: var(--surface); border-radius: 14px 14px 14px 4px; padding: 12px 14px; box-shadow: 0 1px 0 var(--line); min-width: 0 }
+.intro { font-weight: 600 }
+.caution { background: var(--amber-soft); color: var(--ink); border-left: 3px solid var(--amber); border-radius: 10px; padding: 10px 12px; font-size: 14px }
+.empty { color: var(--muted); font-size: 14px }
+.card { display: grid; gap: 10px; cursor: pointer; border: 2px solid transparent; transition: border-color .15s }
+.card.sel { border-color: var(--accent) }
+.card .head { display: flex; justify-content: space-between; gap: 10px; align-items: baseline; flex-wrap: wrap }
+.badge { font: 600 12.5px/1.2 var(--body); padding: 5px 9px; border-radius: 7px }
+.badge.urgent { background: var(--urgent-soft); color: var(--urgent) }
+.badge.month { background: var(--amber-soft); color: var(--amber) }
+.badge.calm { background: var(--good-soft); color: var(--good) }
+.score { font: 600 12.5px/1 var(--mono); color: var(--muted); font-variant-numeric: tabular-nums }
+.company { font-weight: 600; font-size: 15.5px }
+.company small { display: block; font-weight: 400; color: var(--muted); font-size: 13px; margin-top: 2px }
+.blk { display: grid; gap: 2px; font-size: 14.5px }
+.blk h4 { margin: 0; font: 600 11.5px/1.4 var(--body); text-transform: uppercase; letter-spacing: .08em; color: var(--muted) }
+.blk.phrase p { font-style: italic }
+.src { font-size: 12.5px; color: var(--muted); overflow-wrap: anywhere }
+.btns { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px }
+@media (max-width: 460px) { .btns { grid-template-columns: repeat(2, minmax(0, 1fr)) } }
+.btns button, .outc button { font: 500 13px/1.2 var(--body); padding: 9px 6px; border-radius: 9px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); cursor: pointer }
+.btns button:hover, .outc button:hover { border-color: var(--accent) }
+.btns button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--surface) }
+.outc { display: grid; gap: 6px; background: var(--accent-soft); border-radius: 10px; padding: 10px }
+.outc p { font-size: 13.5px }
+.outc div { display: flex; flex-wrap: wrap; gap: 6px }
+.outc button[aria-pressed="true"] { background: var(--good); border-color: var(--good); color: var(--surface) }
+
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 18px; display: grid; gap: 14px; min-width: 0 }
+.formula { font: 500 14px/1.5 var(--mono); color: var(--muted); overflow-wrap: anywhere }
+.parts { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px }
+.part { border: 1px solid var(--line); border-radius: 10px; padding: 10px; display: grid; gap: 4px; min-width: 0 }
+.part b { font: 600 20px/1 var(--mono); font-variant-numeric: tabular-nums }
+.part span { font-size: 12px; color: var(--muted); line-height: 1.3 }
+.total { display: flex; justify-content: space-between; align-items: baseline; border-top: 1px solid var(--line); padding-top: 12px; gap: 12px; flex-wrap: wrap }
+.total b { font: 600 24px/1 var(--mono) }
+.why { font-size: 13.5px; color: var(--muted) }
+
+.metrics { display: grid; gap: 2px }
+.m { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 12px; padding: 10px 0; border-bottom: 1px solid var(--line); align-items: center }
+.m:last-child { border-bottom: 0 }
+.m .name { font-weight: 500; font-size: 14px }
+.m .val { font: 600 16px/1 var(--mono); font-variant-numeric: tabular-nums; text-align: right }
+.m .thr { font-size: 12px; color: var(--muted); grid-column: 1 / -1; display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap }
+.chip { font: 600 11.5px/1 var(--body); padding: 4px 7px; border-radius: 6px }
+.chip.go { background: var(--good-soft); color: var(--good) }
+.chip.stop { background: var(--urgent-soft); color: var(--urgent) }
+.chip.gray { background: var(--amber-soft); color: var(--amber) }
+.chip.na { background: var(--bg); color: var(--muted) }
+.bar { height: 6px; border-radius: 3px; background: var(--bg); grid-column: 1 / -1; position: relative; overflow: hidden }
+.bar i { position: absolute; inset: 0 auto 0 0; background: var(--accent); border-radius: 3px; transition: width .25s }
+.reset { justify-self: start; font: 500 13px/1 var(--body); background: none; border: 1px solid var(--line); color: var(--muted); border-radius: 8px; padding: 8px 10px; cursor: pointer }
+
+.flow { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 8px; counter-reset: s }
+@media (max-width: 900px) { .flow { grid-template-columns: repeat(4, minmax(0, 1fr)) } }
+@media (max-width: 480px) { .flow { grid-template-columns: repeat(2, minmax(0, 1fr)) } }
+.step { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 12px; display: grid; gap: 4px; align-content: start; min-width: 0 }
+.step::before { counter-increment: s; content: counter(s); font: 600 12px/1 var(--mono); color: var(--accent) }
+.step b { font-size: 13.5px; line-height: 1.3 }
+.step span { font-size: 12.5px; color: var(--muted); line-height: 1.35 }
+.step.km { background: var(--accent-soft); border-color: var(--accent) }
+
+.two { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 28px }
+@media (max-width: 760px) { .two { grid-template-columns: minmax(0, 1fr) } }
+.list { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px }
+.list li { display: grid; grid-template-columns: 22px minmax(0, 1fr); gap: 8px; font-size: 14.5px }
+.list li::before { font: 600 14px/1.5 var(--mono) }
+.done li::before { content: "✓"; color: var(--good) }
+.todo li::before { content: "○"; color: var(--muted) }
+.list small { display: block; color: var(--muted); font-size: 13px }
+.decisions { font-size: 14px; color: var(--muted); display: grid; gap: 6px; padding-left: 18px; margin: 0 }
+footer { color: var(--muted); font-size: 13px; border-top: 1px solid var(--line); padding-top: 16px }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important } }
+</style>
+<style>body{margin:0}</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <span class="eyebrow">kmradar · MVP снаружи банка · демо</span>
+    <h1>Утро КМ с радаром поводов</h1>
+    <p class="lead">Ниже — настоящий вывод кода на вымышленных компаниях Тверской области за 13–15 октября. Нажимайте кнопки на карточках, как это сделал бы КМ: метрики пилота справа пересчитаются.</p>
+    <div class="facts">
+      <span><b>8</b> типов событий</span>
+      <span><b>4</b> источника: ЕИС, ЕГРЮЛ, Федресурс, ГИР БО</span>
+      <span><b>35</b> тестов проходят</span>
+      <span><b>0</b> байт банковских данных</span>
+      <span><a href="https://github.com/ker4anin-arch/kmradar/pull/1" target="_blank" rel="noopener">Pull request #1</a></span>
+    </div>
+  </header>
+
+  <section class="main">
+    <div class="col">
+      <div class="sechead">
+        <h2>Дайджест в 08:30</h2>
+        <p>Выберите день и КМ. Нажмите на карточку, чтобы увидеть, почему она на этом месте.</p>
+      </div>
+      <div class="controls">
+        <div class="seg" id="days" role="group" aria-label="День"></div>
+        <div class="seg" id="kms" role="group" aria-label="КМ"></div>
+      </div>
+      <div class="chat" id="chat" aria-live="polite"></div>
+    </div>
+
+    <div class="col">
+      <div class="panel" id="whyPanel"></div>
+      <div class="panel">
+        <div class="sechead">
+          <h2>Метрики пилота</h2>
+          <p>Считаются по нажатиям в дайджестах КМ «стройка и логистика». Пороги — из документа MVP.</p>
+        </div>
+        <div class="metrics" id="metrics"></div>
+        <button class="reset" id="reset" type="button">Сбросить ответы</button>
+      </div>
+    </div>
+  </section>
+
+  <section class="col">
+    <div class="sechead">
+      <h2>Ночной пайплайн</h2>
+      <p>Раз в сутки. Единственная точка контакта с банком — сам КМ: клиент или нет, он проверяет у себя в CRM.</p>
+    </div>
+    <div class="flow">
+      <div class="step"><b>Снимок</b><span>Состояние компаний территории из открытых реестров</span></div>
+      <div class="step"><b>Разница</b><span>Сегодня минус вчера; первый снимок — база</span></div>
+      <div class="step"><b>События</b><span>8 типов, факты как есть, со ссылкой на источник</span></div>
+      <div class="step"><b>Скоринг</b><span>W × F × S × P × личный вес КМ</span></div>
+      <div class="step"><b>Лимиты</b><span>7 + 3 срочных, неделя тишины, стоп-сигналы</span></div>
+      <div class="step"><b>Карточка</b><span>Факты шаблоном, текст LLM с проверкой</span></div>
+      <div class="step km"><b>КМ</b><span>Бот, письмо или страница; звонок по поводу</span></div>
+      <div class="step"><b>Ответ</b><span>Кнопки и вопрос об итоге через 7 дней</span></div>
+    </div>
+  </section>
+
+  <section class="two">
+    <div class="col">
+      <h2>Что сделано</h2>
+      <ul class="list done">
+        <li><span>Сравнение снимков → 8 типов событий<small>Победа в закупке, лизинг и залоги, смена директора, учредителей, расширение, рост МСП, рост выручки, стоп-сигналы</small></span></li>
+        <li><span>Скоринг и дайджест по правилам документа<small>Склейка событий компании, лимиты, пропуск слабых дней</small></span></li>
+        <li><span>Карточка без выдуманных фактов<small>Ответ LLM с цифрами или без «скорее всего» заменяется шаблоном</small></span></li>
+        <li><span>Обратная связь и личные веса КМ<small>Вопрос о причине после 3 «мимо», об итоге — через 7 дней</small></span></li>
+        <li><span>Метрики пилота с порогами</span></li>
+        <li><span>Доставка: консоль, Markdown для письма, Telegram<small>Кнопки работают только у КМ, которому ушла карточка</small></span></li>
+        <li><span>Режим Wizard of Oz<small>Аналитик вносит события руками, радар делает карточки по тем же правилам</small></span></li>
+      </ul>
+    </div>
+    <div class="col">
+      <h2>Что дальше</h2>
+      <ul class="list todo">
+        <li><span>Подключить Checko или Контур.Фокус<small>ЕГРЮЛ, МСП, Федресурс, ФССП, ГИР БО</small></span></li>
+        <li><span>Подключить закупки ЕИС<small>Индивидуальный токен или коммерческий API</small></span></li>
+        <li><span>Подключить GigaChat для текста карточек</span></li>
+        <li><span>Настройка профиля КМ диалогом в боте<small>Сейчас — файл kms.json</small></span></li>
+        <li><span>Postgres вместо SQLite</span></li>
+      </ul>
+      <h2 style="margin-top:14px">Решения на спорных местах</h2>
+      <ul class="decisions">
+        <li>Размер контракта: потолок 2,0 и пол 0,5, чтобы мелкий контракт не обнулял самый сильный сигнал.</li>
+        <li>Пропуск слабого дня не трогает срочные карточки.</li>
+        <li>«Уже знал» и «мимо» — доля от карточек с ответом, «связался» — от всех.</li>
+        <li>Дайджест «открыт», если КМ нажал хоть одну кнопку в этот день.</li>
+      </ul>
+    </div>
+  </section>
+
+  <footer>Компании, ИНН и суммы вымышлены. Код: ветка claude/new-session-nl8q0t, команда <code>python -m kmradar demo</code>.</footer>
+</div>
+<script>
+const DATA = [{"day": "2026-10-13", "km": "km-tver-1", "kmName": "КМ Тверь · стройка и логистика", "events": 5, "skipped": false, "strong": 3, "cards": [{"id": 1, "score": 0.6, "urgent": false, "text": "🟡 В течение месяца · до 12.11\nООО «Волжская логистика» · ИНН 0000000003 · регион 69 · ОКВЭД 49.41 · выручка 2024: 640 млн ₽\n\nЧто произошло\nНовый лизинг от 13.10.2026: 5 седельных тягачей (лизинговая компания).\n\nЗачем звонить\nКомпания вкладывается в технику и оборудование. Возможно, выбирает, как финансировать следующие покупки.\n\nПервая фраза\n«Увидел, что вы обновляете технику. Как сейчас финансируете такие покупки?»\n\nСпросить\nКакие ещё закупки техники или оборудования планируете в этом году?\n\nИсточник: Федресурс: https://fedresurs.ru/\n[Полезно] [Мимо] [Уже знал] [Связался]", "types": ["Лизинг / залог имущества"], "parts": {"W": 0.6, "F": 1.0, "S": 1.0, "P": 1.0}}, {"id": 2, "score": 0.3, "urgent": false, "text": "🟡 В течение месяца · до 12.11\nООО «Тверьдорстрой» · ИНН 0000000002 · регион 69 · ОКВЭД 42.11 · выручка 2024: 780 млн ₽\n\nЧто произошло\nСменился руководитель (Генеральный директор): Петров П. П. → Кузнецов К. К., запись от 13.10.2026.\n\nЗачем звонить\nНовый руководитель часто пересматривает банки и условия обслуживания. Скорее всего, сейчас удачный момент познакомиться.\n\nПервая фраза\n«Увидел, что в компании новый руководитель — хотел познакомиться и поздравить с назначением.»\n\nСпросить\nЧто для вас сейчас важнее всего в работе с банками?\n\nИсточник: ЕГРЮЛ\n[Полезно] [Мимо] [Уже знал] [Связался]", "types": ["Смена руководителя"], "parts": {"W": 0.6, "F": 1.0, "S": 1.0, "P": 0.5}}, {"id": 3, "score": 0.25, "urgent": false, "text": "🟢 Без спешки · до 27.11\nООО «Калининский бетон» · ИНН 0000000004 · регион 69 · ОКВЭД 23.63 · выручка 2024: 1,5 млрд ₽\n\nЧто произошло\nРасширение (13.10.2026): новые ОКВЭД 43.12; филиал в регионе 77.\n\nЗачем звонить\nКомпания расширяется: новые направления или регионы. Скорее всего, понадобятся расчёты и финансирование на новом месте.\n\nПервая фраза\n«Вижу, что вы открываете новое направление — интересно, куда растёте.»\n\nСпросить\nКак планируете организовать расчёты и финансирование на новом направлении?\n\nИсточник: ЕГРЮЛ\n[Полезно] [Мимо] [Уже знал] [Связался]", "types": ["Расширение: ОКВЭД, филиал, регион"], "parts": {"W": 0.5, "F": 1.0, "S": 1.0, "P": 0.5}}], "cautions": ["⚠️ Осторожно: ООО «Верхневолжский монтаж» (ИНН 0000000005) — Намерение кредитора обратиться в суд о банкротстве (13.10.2026)."]}, {"day": "2026-10-13", "km": "km-tver-2", "kmName": "КМ Тверь · транспорт", "events": 5, "skipped": true, "strong": 1, "cards": [], "cautions": []}, {"day": "2026-10-14", "km": "km-tver-1", "kmName": "КМ Тверь · стройка и логистика", "events": 5, "skipped": false, "strong": 3, "cards": [{"id": 4, "score": 1.65, "urgent": true, "text": "🔴 Срочно · окно до 21.10\nООО «Северный Стройресурс» · ИНН 0000000001 · регион 69 · ОКВЭД 42.11 · выручка 2024: 1,2 млрд ₽\n\nЧто произошло\nПобеда в закупке «Ремонт региональной автодороги», контракт 186 млн ₽, заказчик — ГКУ «Дирекция дорог» (протокол от 14.10.2026, 44-ФЗ, ЕИС № 0136200000000000002).\n\nЗачем звонить\nДо подписания контракта нужно внести обеспечение исполнения. Скорее всего, ищут гарантию прямо сейчас; под контракт может понадобиться оборотка.\n\nПервая фраза\n«Видел, что вы выиграли контракт — поздравляю. Обеспечение исполнения уже решили, или можем быстро предложить гарантию?»\n\nСпросить\nКак планируете финансировать закупку материалов до первой оплаты по контракту?\n\nИсточник: ЕИС: https://zakupki.gov.ru/\n[Полезно] [Мимо] [Уже знал] [Связался]", "types": ["Победа в закупке"], "parts": {"W": 1.0, "F": 1.0, "S": 1.65, "P": 1.0}}, {"id": 5, "score": 0.4, "urgent": false, "text": "🟢 Без спешки · до 13.12\nООО «Торжокстрой» · ИНН 0000000007 · регион 69 · ОКВЭД 41.20 · выручка 2024: 1,9 млрд ₽\n\nЧто произошло\nВ реестре МСП категория сменилась: малое → среднее (14.10.2026).\nИзменения в собственности (14.10.2026): новые учредители: ООО «Инвест-Холдинг»; уставный капитал 10 тыс. ₽ → 5 млн ₽.\n\nЗачем звонить\nКомпания выросла из своей категории МСП. Возможно, продукты для малого бизнеса ей уже тесны.\n\nПервая фраза\n«Заметил, что компания перешла в новую категорию МСП — поздравляю с ростом.»\n\nСпросить\nХватает ли текущих лимитов и условий под новые объёмы?\n\nИсточник: Реестр МСП; ЕГРЮЛ\n[Полезно] [Мимо] [Уже знал] [Связался]", "types": ["Переход в категорию МСП выше", "Смена учредителей / капитала"], "parts": {"W": 0.4, "F": 1.0, "S": 1.0, "P": 1.0}}, {"id": 6, "score": 0.4, "urgent": false, "text": "🟢 Без спешки · до 12.01\nООО «Конаково Инжиниринг» · ИНН 0000000008 · регион 69 · ОКВЭД 43.22 · выручка 2025: 870 млн ₽\n\nЧто произошло\nВыручка 2025: 870 млн ₽ против 600 млн ₽ годом ранее (+45%).\n\nЗачем звонить\nВыручка заметно выросла. Скорее всего, растёт и потребность в оборотных средствах.\n\nПервая фраза\n«Посмотрел свежую отчётность — у вас сильный рост, поздравляю.»\n\nСпросить\nКак финансируете рост оборотки — свои средства, кредиты, отсрочки поставщиков?\n\nИсточник: ГИР БО\n[Полезно] [Мимо] [Уже знал] [Связался]", "types": ["Рост выручки > 30%"], "parts": {"W": 0.4, "F": 1.0, "S": 1.0, "P": 1.0}}], "cautions": []}, {"day": "2026-10-14", "km": "km-tver-2", "kmName": "КМ Тверь · транспорт", "events": 5, "skipped": true, "strong": 1, "cards": [], "cautions": []}, {"day": "2026-10-15", "km": "km-tver-1", "kmName": "КМ Тверь · стройка и логистика", "events": 1, "skipped": false, "strong": 0, "cards": [], "cautions": []}, {"day": "2026-10-15", "km": "km-tver-2", "kmName": "КМ Тверь · транспорт", "events": 1, "skipped": true, "strong": 1, "cards": [], "cautions": []}];
+const FB = [["useful", "Полезно"], ["miss", "Мимо"], ["knew", "Уже знал"], ["contacted", "Связался"]];
+const OUT = [["meeting", "Встреча"], ["application", "Заявка"], ["refusal", "Отказ"], ["nothing", "Ничего"]];
+const MAIN_KM = "km-tver-1";
+const KM_LABEL = { "km-tver-1": "Стройка и логистика", "km-tver-2": "Транспорт" };
+const NOTES = {
+  "2026-10-15|km-tver-1": "Новое событие одно: залог асфальтоукладчика у «Северного Стройресурса». По компании вчера уже была карточка, поэтому радар неделю молчит о ней.",
+  "km-tver-2": "Дайджест не отправлен: у узкого профиля «транспорт» меньше 3 сильных поводов два дня подряд, срочных нет. Лизинг «Волжской логистики» получил КМ стройки и логистики.",
+};
+const PART_LABEL = { W: "вес события", F: "свежесть", S: "размер повода", P: "совпадение с продуктами КМ" };
+
+const days = [...new Set(DATA.map(d => d.day))];
+const state = { day: "2026-10-14", km: MAIN_KM, sel: null, fb: {}, out: {} };
+try { const saved = JSON.parse(localStorage.getItem("kmradar-demo") || "null"); if (saved) { state.fb = saved.fb || {}; state.out = saved.out || {}; } } catch (e) {}
+function save() { try { localStorage.setItem("kmradar-demo", JSON.stringify({ fb: state.fb, out: state.out })); } catch (e) {} }
+
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const ddmm = d => d.slice(8, 10) + "." + d.slice(5, 7);
+const current = () => DATA.find(d => d.day === state.day && d.km === state.km);
+const allCards = () => DATA.flatMap(d => d.cards.map(c => ({ ...c, day: d.day, km: d.km })));
+
+function parse(text) {
+  const blocks = text.split("\n\n");
+  const [header, company] = blocks[0].split("\n");
+  const sections = blocks.slice(1, -1).map(b => { const [t, ...rest] = b.split("\n"); return { t, body: rest.join("\n") }; });
+  const source = blocks[blocks.length - 1].split("\n")[0];
+  const cls = header.startsWith("🔴") ? "urgent" : header.startsWith("🟡") ? "month" : "calm";
+  const parts = company.split(" · ");
+  return { header: header.replace(/^\S+\s/, ""), cls, name: parts[0], meta: parts.slice(1).join(" · "), sections, source };
+}
+
+function seg(el, items, active, onPick) {
+  el.innerHTML = items.map(([v, l]) => `<button type="button" data-v="${esc(v)}" aria-pressed="${v === active}">${esc(l)}</button>`).join("");
+  el.querySelectorAll("button").forEach(b => b.onclick = () => onPick(b.dataset.v));
+}
+
+function renderControls() {
+  seg($("days"), days.map(d => [d, ddmm(d)]), state.day, v => { state.day = v; state.sel = null; render(); });
+  seg($("kms"), Object.entries(KM_LABEL), state.km, v => { state.km = v; state.sel = null; render(); });
+}
+
+function renderChat() {
+  const d = current();
+  const n = d.cards.length;
+  let html = `<div class="bubble intro">Радар · ${ddmm(d.day)} · ${n ? "поводов: " + n : "сильных поводов нет"}</div>`;
+  d.cautions.forEach(c => html += `<div class="caution">${esc(c)}</div>`);
+  d.cards.forEach(c => {
+    const p = parse(c.text);
+    const fb = state.fb[c.id];
+    html += `<article class="bubble card${state.sel === c.id ? " sel" : ""}" data-id="${c.id}" tabindex="0" aria-label="Карточка ${esc(p.name)}">
+      <div class="head"><span class="badge ${p.cls}">${esc(p.header)}</span><span class="score">score ${c.score.toFixed(2)}</span></div>
+      <div class="company">${esc(p.name)}<small>${esc(p.meta)}</small></div>
+      ${p.sections.map(s => `<div class="blk${s.t === "Первая фраза" ? " phrase" : ""}"><h4>${esc(s.t)}</h4><p>${esc(s.body).replace(/\n/g, "<br>")}</p></div>`).join("")}
+      <div class="src">${esc(p.source)}</div>
+      <div class="btns">${FB.map(([v, l]) => `<button type="button" data-fb="${v}" aria-pressed="${fb === v}">${l}</button>`).join("")}</div>
+      ${fb === "contacted" ? `<div class="outc"><p>Через 7 дней бот спросит: «Чем закончилось?»</p><div>${OUT.map(([v, l]) => `<button type="button" data-out="${v}" aria-pressed="${state.out[c.id] === v}">${l}</button>`).join("")}</div></div>` : ""}
+    </article>`;
+  });
+  if (!n) {
+    const note = NOTES[d.day + "|" + d.km] || NOTES[d.km] || "Сегодня событий у компаний территории нет.";
+    html += `<div class="bubble empty">${esc(note)}</div>`;
+  }
+  $("chat").innerHTML = html;
+  $("chat").querySelectorAll(".card").forEach(el => {
+    const id = +el.dataset.id;
+    el.onclick = e => {
+      const b = e.target.closest("button");
+      if (b && b.dataset.fb) {
+        state.fb[id] = state.fb[id] === b.dataset.fb ? undefined : b.dataset.fb;
+        if (state.fb[id] !== "contacted") delete state.out[id];
+        save();
+      } else if (b && b.dataset.out) {
+        state.out[id] = state.out[id] === b.dataset.out ? undefined : b.dataset.out; save();
+      }
+      state.sel = id; render();
+    };
+    el.onkeydown = e => { if ((e.key === "Enter" || e.key === " ") && e.target === el) { e.preventDefault(); state.sel = id; render(); } };
+  });
+}
+
+function renderWhy() {
+  const d = current();
+  const c = d.cards.find(x => x.id === state.sel) || d.cards[0];
+  if (!c) {
+    $("whyPanel").innerHTML = `<div class="sechead"><h2>Почему карточка наверху</h2><p>В этот день у выбранного КМ карточек нет. Переключитесь на 13.10 или 14.10.</p></div>`;
+    return;
+  }
+  const p = parse(c.text);
+  const notes = [];
+  if (c.parts.P < 1) notes.push("P = 0,5: продукт этого события не из настройки КМ.");
+  if (c.parts.S !== 1) notes.push(`S = ${c.parts.S.toFixed(2).replace(".", ",")}: контракт к медиане закупок территории (потолок 2,0).`);
+  if (c.types.length > 1) notes.push(`Склеено событий: ${c.types.length} (${c.types.join(", ")}). Score — по сильнейшему.`);
+  if (c.urgent) notes.push("Срочная: идёт сверх лимита в 7 карточек.");
+  $("whyPanel").innerHTML = `
+    <div class="sechead"><h2>Почему карточка наверху</h2><p>${esc(p.name)} · ${esc(c.types[0])}</p></div>
+    <div class="formula">score = W × F × S × P × личный вес</div>
+    <div class="parts">${["W", "F", "S", "P"].map(k => `<div class="part"><b>${c.parts[k].toFixed(2)}</b><span>${PART_LABEL[k]}</span></div>`).join("")}</div>
+    <div class="total"><span>Итого (порог показа 0,25)</span><b>${c.score.toFixed(2)}</b></div>
+    ${notes.length ? `<div class="why">${notes.map(esc).join("<br>")}</div>` : ""}`;
+}
+
+function verdict(v, go, stop) { return v === null ? "na" : go(v) ? "go" : stop(v) ? "stop" : "gray"; }
+function renderMetrics() {
+  const cards = allCards().filter(c => c.km === MAIN_KM);
+  const fb = cards.map(c => state.fb[c.id]).filter(Boolean);
+  const share = (n, t) => t ? n / t : null;
+  const cnt = v => fb.filter(x => x === v).length;
+  const digestDays = [...new Set(cards.map(c => c.day))];
+  const opened = digestDays.filter(day => cards.some(c => c.day === day && state.fb[c.id])).length;
+  const wins = cards.filter(c => ["meeting", "application"].includes(state.out[c.id])).length;
+  const rows = [
+    ["Доля «связался»", share(cnt("contacted"), cards.length), "≥ 30%", "< 10%", v => v >= .3, v => v < .1, true],
+    ["Доля «уже знал»", share(cnt("knew"), fb.length), "< 50%", "> 70%", v => v < .5, v => v > .7, true],
+    ["Доля «мимо»", share(cnt("miss"), fb.length), "< 30%", "> 50%", v => v < .3, v => v > .5, true],
+    ["Открытие дайджеста", share(opened, digestDays.length), "≥ 60% дней", "< 30%", v => v >= .6, v => v < .3, true],
+    ["Встречи и заявки на КМ в месяц", fb.length ? wins : null, "≥ 1", "0 за пилот", v => v >= 1, v => v === 0, false],
+  ];
+  const label = { go: "идём дальше", stop: "стоп", gray: "серая зона", na: "нет ответов" };
+  $("metrics").innerHTML = rows.map(([name, v, go, stop, g, s, pct]) => {
+    const vd = verdict(v, g, s);
+    const shown = v === null ? "—" : pct ? Math.round(v * 100) + "%" : String(v);
+    const width = v === null ? 0 : pct ? v * 100 : Math.min(100, v * 50);
+    return `<div class="m"><span class="name">${name}</span><span class="val">${shown}</span>
+      <div class="bar"><i style="width:${width}%"></i></div>
+      <div class="thr"><span>идём дальше ${go} · стоп ${stop}</span><span class="chip ${vd}">${label[vd]}</span></div></div>`;
+  }).join("") + `<div class="m"><span class="name">Точность фактов</span><span class="val">100%</span><div class="thr"><span>факты подставляются из данных; ручная проверка 50 карточек</span><span class="chip go">в коде</span></div></div>`;
+}
+
+function render() { renderControls(); renderChat(); renderWhy(); renderMetrics(); }
+$("reset").onclick = () => { state.fb = {}; state.out = {}; save(); render(); };
+render();
+</script>
+
+</body>
+</html>

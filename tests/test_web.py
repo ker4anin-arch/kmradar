@@ -125,3 +125,10 @@ def test_parse_card_roundtrip():
     assert c["name"] == "ООО «А»" and c["meta"] == "ИНН 1 · регион 69"
     assert c["sections"] == [("Что произошло", "Факт."), ("Зачем звонить", "Гипотеза.")]
     assert c["source"] == "Источник: ЕИС: https://x.ru/"
+
+
+def test_static_demo_page(site):
+    app, *_ = site
+    r = app.handle("GET", "/demo")
+    assert r.status == 200 and "Утро КМ с радаром поводов" in r.body and "const DATA" in r.body
+    assert "script-src 'unsafe-inline'" in r.headers["Content-Security-Policy"]

@@ -142,6 +142,15 @@ class App:
                                       "<p class='muted'>Дайджест открывается по личной ссылке вида "
                                       "/k/…, её выдаёт администратор радара.</p>"),
                             {"Content-Type": "text/html; charset=utf-8"})
+        if url.path == "/demo":
+            # статичный интерактивный пример на выдуманных компаниях; свой CSP — нужен inline-скрипт и шрифты
+            from pathlib import Path
+            demo = (Path(__file__).parent / "static" / "demo.html").read_text(encoding="utf-8")
+            return Response(200, demo, {
+                "Content-Type": "text/html; charset=utf-8",
+                "Content-Security-Policy": "default-src 'none'; script-src 'unsafe-inline'; "
+                                           "style-src 'unsafe-inline' https://fonts.googleapis.com; "
+                                           "font-src https://fonts.gstatic.com; base-uri 'none'; frame-ancestors 'none'"})
         a = ADMIN_RE.match(url.path)
         if a:
             return self.admin(method, a.group(1), bool(a.group(2)), url.query, body)

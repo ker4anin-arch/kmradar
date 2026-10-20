@@ -20,6 +20,8 @@ id kmradar >/dev/null 2>&1 || useradd --system --home /var/lib/kmradar --shell /
 mkdir -p /opt/kmradar /var/lib/kmradar/data
 rm -rf /opt/kmradar/kmradar
 cp -r kmradar fixtures pyproject.toml /opt/kmradar/
+# стартовый список источников новостей — только если своего ещё нет (свой не трогаем)
+[ -f /var/lib/kmradar/feeds.txt ] || cp deploy/feeds.txt /var/lib/kmradar/feeds.txt
 chown -R kmradar:kmradar /var/lib/kmradar
 
 if [ ! -f "$ENV_FILE" ]; then

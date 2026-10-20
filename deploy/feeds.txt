@@ -1,0 +1,37 @@
+# Источники новостей для радара: по одному в строке.
+# Формат: RSS/Atom-ссылка, https://t.me/<канал> (публичный Telegram-канал) или @канал.
+# Всё, что после #, — комментарий. Чтобы выключить источник, поставьте # в начале строки.
+# Новость становится карточкой, только если в ней есть компания из базы радара
+# (по ИНН, по названию в кавычках или по названию из 2+ слов целиком).
+# Проверено 20.10.2026: все строки ниже отвечали и отдавали свежие записи.
+# Проверить на сервере: python3 -m kmradar news-test --db /var/lib/kmradar/radar.db /var/lib/kmradar/feeds.txt
+
+# --- Федеральные деловые СМИ (RSS) ---
+https://rssexport.rbc.ru/rbcnews/news/30/full.rss        # РБК
+https://www.vedomosti.ru/rss/news                        # Ведомости
+https://www.kommersant.ru/RSS/section-business.xml       # Коммерсантъ · Бизнес
+https://www.kommersant.ru/RSS/section-economics.xml      # Коммерсантъ · Экономика
+https://www.interfax.ru/rss.asp                          # Интерфакс
+https://tass.ru/rss/v2.xml                               # ТАСС
+https://frankmedia.ru/feed                               # Frank Media (банки, финансы)
+https://vc.ru/rss                                        # vc.ru
+https://www.cnews.ru/inc/rss/news.xml                    # CNews (ИТ-компании)
+
+# --- Федеральные Telegram-каналы ---
+https://t.me/rbc_news                                    # РБК
+https://t.me/kommersant                                  # Коммерсантъ
+https://t.me/interfaxonline                              # Интерфакс
+https://t.me/banksta                                     # Банкста
+https://t.me/thebell_io                                  # The Bell
+
+# --- Региональные (Telegram). Оставьте свои регионы, остальные можно закомментировать ---
+https://t.me/fontankaspb                                 # Санкт-Петербург · Фонтанка
+https://t.me/kommersant_nn                               # Нижний Новгород · Коммерсантъ
+https://t.me/kommersant_rostov                           # Ростов-на-Дону · Коммерсантъ
+https://t.me/kommersant_kuban                            # Краснодар · Коммерсантъ
+https://t.me/businessgazeta                              # Татарстан · Бизнес Online
+https://t.me/realnoevremya                               # Татарстан · Реальное время
+https://t.me/e1_news                                     # Екатеринбург · E1
+https://t.me/ngs_news                                    # Новосибирск · НГС
+
+# --- Сюда добавляйте свои источники ---

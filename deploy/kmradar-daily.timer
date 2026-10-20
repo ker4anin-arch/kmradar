@@ -1,0 +1,9 @@
+[Unit]
+Description=kmradar: дайджест по будням в 08:25 по Москве
+
+[Timer]
+OnCalendar=Mon..Fri *-*-* 08:25:00 Europe/Moscow
+Persistent=true
+
+[Install]
+WantedBy=timers.target

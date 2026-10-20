@@ -1,0 +1,275 @@
+{
+ "snapshots": [
+  {
+   "inn": "0000000001",
+   "name": "ООО «Северный Стройресурс»",
+   "region": "69",
+   "okved_main": "42.11",
+   "okved_extra": [],
+   "director": {
+    "name": "Иванов И. И.",
+    "position": "Генеральный директор"
+   },
+   "founders": [
+    {
+     "name": "Иванов И. И.",
+     "share": 100
+    }
+   ],
+   "capital": 10000,
+   "branches": [],
+   "msp_category": "medium",
+   "revenue": {
+    "2023": 950000000,
+    "2024": 1200000000
+   },
+   "receivables": {},
+   "leasing": [],
+   "pledges": [
+    {
+     "id": "P-1",
+     "date": "2026-10-15",
+     "subject": "Асфальтоукладчик",
+     "url": "https://fedresurs.ru/"
+    }
+   ],
+   "status": "active",
+   "bankruptcy_messages": [],
+   "enforcement_total": 0
+  },
+  {
+   "inn": "0000000002",
+   "name": "ООО «Тверьдорстрой»",
+   "region": "69",
+   "okved_main": "42.11",
+   "okved_extra": [],
+   "director": {
+    "name": "Кузнецов К. К.",
+    "position": "Генеральный директор"
+   },
+   "founders": [
+    {
+     "name": "Иванов И. И.",
+     "share": 100
+    }
+   ],
+   "capital": 10000,
+   "branches": [],
+   "msp_category": "small",
+   "revenue": {
+    "2024": 780000000
+   },
+   "receivables": {},
+   "leasing": [],
+   "pledges": [],
+   "status": "active",
+   "bankruptcy_messages": [],
+   "enforcement_total": 0
+  },
+  {
+   "inn": "0000000003",
+   "name": "ООО «Волжская логистика»",
+   "region": "69",
+   "okved_main": "49.41",
+   "okved_extra": [],
+   "director": {
+    "name": "Иванов И. И.",
+    "position": "Генеральный директор"
+   },
+   "founders": [
+    {
+     "name": "Иванов И. И.",
+     "share": 100
+    }
+   ],
+   "capital": 10000,
+   "branches": [],
+   "msp_category": "small",
+   "revenue": {
+    "2024": 640000000
+   },
+   "receivables": {},
+   "leasing": [
+    {
+     "id": "L-1",
+     "date": "2026-10-13",
+     "subject": "5 седельных тягачей",
+     "counterparty": "лизинговая компания",
+     "url": "https://fedresurs.ru/"
+    }
+   ],
+   "pledges": [],
+   "status": "active",
+   "bankruptcy_messages": [],
+   "enforcement_total": 0
+  },
+  {
+   "inn": "0000000004",
+   "name": "ООО «Калининский бетон»",
+   "region": "69",
+   "okved_main": "23.63",
+   "okved_extra": [
+    "43.99",
+    "43.12"
+   ],
+   "director": {
+    "name": "Иванов И. И.",
+    "position": "Генеральный директор"
+   },
+   "founders": [
+    {
+     "name": "Иванов И. И.",
+     "share": 100
+    }
+   ],
+   "capital": 10000,
+   "branches": [
+    {
+     "region": "77",
+     "address": "Москва"
+    }
+   ],
+   "msp_category": "medium",
+   "revenue": {
+    "2024": 1500000000
+   },
+   "receivables": {},
+   "leasing": [],
+   "pledges": [],
+   "status": "active",
+   "bankruptcy_messages": [],
+   "enforcement_total": 0
+  },
+  {
+   "inn": "0000000005",
+   "name": "ООО «Верхневолжский монтаж»",
+   "region": "69",
+   "okved_main": "43.21",
+   "okved_extra": [],
+   "director": {
+    "name": "Иванов И. И.",
+    "position": "Генеральный директор"
+   },
+   "founders": [
+    {
+     "name": "Иванов И. И.",
+     "share": 100
+    }
+   ],
+   "capital": 10000,
+   "branches": [],
+   "msp_category": "small",
+   "revenue": {
+    "2024": 520000000
+   },
+   "receivables": {},
+   "leasing": [],
+   "pledges": [],
+   "status": "active",
+   "bankruptcy_messages": [
+    {
+     "id": "B-1",
+     "date": "2026-10-13",
+     "kind": "намерение кредитора обратиться в суд о банкротстве",
+     "url": "https://fedresurs.ru/"
+    }
+   ],
+   "enforcement_total": 0
+  },
+  {
+   "inn": "0000000006",
+   "name": "ООО «Ржевагроснаб»",
+   "region": "69",
+   "okved_main": "46.21",
+   "okved_extra": [],
+   "director": {
+    "name": "Иванов И. И.",
+    "position": "Генеральный директор"
+   },
+   "founders": [
+    {
+     "name": "Иванов И. И.",
+     "share": 100
+    }
+   ],
+   "capital": 10000,
+   "branches": [],
+   "msp_category": "small",
+   "revenue": {
+    "2024": 900000000
+   },
+   "receivables": {},
+   "leasing": [],
+   "pledges": [],
+   "status": "active",
+   "bankruptcy_messages": [],
+   "enforcement_total": 0
+  },
+  {
+   "inn": "0000000007",
+   "name": "ООО «Торжокстрой»",
+   "region": "69",
+   "okved_main": "41.20",
+   "okved_extra": [],
+   "director": {
+    "name": "Иванов И. И.",
+    "position": "Генеральный директор"
+   },
+   "founders": [
+    {
+     "name": "Сидоров С. С.",
+     "share": 100
+    },
+    {
+     "name": "ООО «Инвест-Холдинг»",
+     "share": 40
+    }
+   ],
+   "capital": 5000000,
+   "branches": [],
+   "msp_category": "medium",
+   "revenue": {
+    "2024": 1900000000
+   },
+   "receivables": {},
+   "leasing": [],
+   "pledges": [],
+   "status": "active",
+   "bankruptcy_messages": [],
+   "enforcement_total": 0
+  },
+  {
+   "inn": "0000000008",
+   "name": "ООО «Конаково Инжиниринг»",
+   "region": "69",
+   "okved_main": "43.22",
+   "okved_extra": [],
+   "director": {
+    "name": "Иванов И. И.",
+    "position": "Генеральный директор"
+   },
+   "founders": [
+    {
+     "name": "Иванов И. И.",
+     "share": 100
+    }
+   ],
+   "capital": 10000,
+   "branches": [],
+   "msp_category": "small",
+   "revenue": {
+    "2023": 410000000,
+    "2024": 600000000,
+    "2025": 870000000
+   },
+   "receivables": {},
+   "leasing": [],
+   "pledges": [],
+   "status": "active",
+   "bankruptcy_messages": [],
+   "enforcement_total": 0
+  }
+ ],
+ "tenders": [],
+ "events": []
+}

@@ -1,0 +1,38 @@
+[
+ {
+  "km_id": "km-tver-1",
+  "name": "КМ Тверь · стройка и логистика",
+  "regions": [
+   "69"
+  ],
+  "okved": [
+   "41",
+   "42",
+   "43",
+   "49"
+  ],
+  "revenue_min": 300000000,
+  "revenue_max": 5000000000,
+  "products": [
+   "guarantee",
+   "contract_loan",
+   "credit_line",
+   "leasing"
+  ]
+ },
+ {
+  "km_id": "km-tver-2",
+  "name": "КМ Тверь · транспорт",
+  "regions": [
+   "69"
+  ],
+  "okved": [
+   "49"
+  ],
+  "revenue_min": 100000000,
+  "products": [
+   "leasing",
+   "loan"
+  ]
+ }
+]
